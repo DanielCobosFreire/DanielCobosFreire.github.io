@@ -1,8 +1,76 @@
 // script.js
 // CSi - CoFre Sistemas Informáticos
-// Funcionalidad dinámica: registro, validación, conteo y eliminación de solicitudes de servicio
+// Semana 7: contenido dinámico renderizado desde arreglos/objetos,
+// estructura pensada para una futura migración a plantillas de Flask.
+//
+// Cada función de "render" de este archivo simula lo que en Flask sería
+// un {% for %} recorriendo datos que en el futuro vendrán de una base
+// de datos, en lugar de un arreglo estático en JavaScript.
 
 document.addEventListener('DOMContentLoaded', function () {
+
+  /* =====================================================================
+     BLOQUE 1: SERVICIOS (dato -> array de objetos)
+     Equivalente futuro en Flask: servicios = Servicio.query.all()
+     ===================================================================== */
+
+  const servicios = [
+    {
+      icono: '💻',
+      titulo: 'Desarrollo Web',
+      descripcion: 'Sitios web modernos, responsivos y optimizados.'
+    },
+    {
+      icono: '🧭',
+      titulo: 'Consultoría IT',
+      descripcion: 'Asesoramiento tecnológico para empresas.'
+    },
+    {
+      icono: '🛠️',
+      titulo: 'Soporte Técnico',
+      descripcion: 'Mantenimiento y administración de infraestructura TI.'
+    }
+  ];
+
+  const contenedorServicios = document.getElementById('contenedorServicios');
+
+  // Renderiza las tarjetas de servicio a partir del arreglo "servicios".
+  // Estructura repetitiva (forEach) + condicional de estado vacío.
+  function renderServicios() {
+    contenedorServicios.innerHTML = '';
+
+    if (servicios.length === 0) {
+      contenedorServicios.innerHTML =
+        '<p class="text-center text-light">No hay servicios disponibles por el momento.</p>';
+      return;
+    }
+
+    servicios.forEach(function (servicio) {
+      const columna = document.createElement('div');
+      columna.className = 'col-md-4 mb-4';
+
+      columna.innerHTML = `
+        <div class="card h-100 shadow">
+          <div class="card-body text-dark text-center">
+            <div class="icono-servicio">${servicio.icono}</div>
+            <h5 class="card-title">${servicio.titulo}</h5>
+            <p class="card-text">${servicio.descripcion}</p>
+          </div>
+        </div>
+      `;
+
+      contenedorServicios.appendChild(columna);
+    });
+  }
+
+  renderServicios();
+
+
+  /* =====================================================================
+     BLOQUE 2: SOLICITUDES (dato -> array de objetos, con registro desde
+     formulario)
+     Equivalente futuro en Flask: solicitudes = Solicitud.query.all()
+     ===================================================================== */
 
   // Referencias a elementos del DOM
   const formSolicitud = document.getElementById('formSolicitud');
@@ -13,10 +81,12 @@ document.addEventListener('DOMContentLoaded', function () {
   const listaSolicitudes = document.getElementById('listaSolicitudes');
   const contadorSolicitudes = document.getElementById('contadorSolicitudes');
 
-  // Contador de solicitudes registradas
-  let totalSolicitudes = 0;
+  // Arreglo de objetos: representa los datos de las solicitudes registradas.
+  // Cada solicitud es un objeto con id, nombre, categoría y descripción.
+  let solicitudes = [];
+  let siguienteId = 1;
 
-  // Función para mostrar mensajes de validación al usuario
+  // Función para mostrar mensajes de validación al usuario (Semana 6, sin cambios)
   function mostrarMensaje(texto, tipo) {
     mensajeValidacion.textContent = texto;
     mensajeValidacion.classList.remove('d-none', 'alert-danger', 'alert-success');
@@ -28,61 +98,83 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 3000);
   }
 
-  // Función para actualizar el contador de registros en pantalla
+  // Actualiza el contador de registros en pantalla a partir del arreglo
   function actualizarContador() {
-    contadorSolicitudes.textContent = totalSolicitudes;
+    contadorSolicitudes.textContent = solicitudes.length;
   }
 
-  // Función para crear y agregar una nueva solicitud a la lista
+  // Renderiza la lista completa de solicitudes a partir del arreglo "solicitudes".
+  // Estructura repetitiva (forEach) + condicional de estado (lista vacía / con datos).
+  function renderSolicitudes() {
+    listaSolicitudes.innerHTML = '';
+    actualizarContador();
+
+    // Condición según el estado de los datos
+    if (solicitudes.length === 0) {
+      const vacio = document.createElement('li');
+      vacio.className = 'list-group-item text-center text-muted';
+      vacio.textContent = 'Aún no hay solicitudes registradas.';
+      listaSolicitudes.appendChild(vacio);
+      return;
+    }
+
+    // Estructura repetitiva: recorre el arreglo y genera un <li> por cada solicitud
+    solicitudes.forEach(function (solicitud) {
+
+      const item = document.createElement('li');
+      item.className = 'list-group-item d-flex justify-content-between align-items-start flex-wrap';
+
+      const contenido = document.createElement('div');
+      contenido.className = 'me-auto';
+
+      const tituloNombre = document.createElement('strong');
+      tituloNombre.textContent = solicitud.nombre;
+
+      const badgeCategoria = document.createElement('span');
+      badgeCategoria.className = 'badge bg-secondary ms-2';
+      badgeCategoria.textContent = solicitud.categoria;
+
+      const textoDescripcion = document.createElement('p');
+      textoDescripcion.className = 'mb-0 text-muted';
+      textoDescripcion.textContent = solicitud.descripcion;
+
+      contenido.appendChild(tituloNombre);
+      contenido.appendChild(badgeCategoria);
+      contenido.appendChild(textoDescripcion);
+
+      // Botón para eliminar la solicitud
+      const botonEliminar = document.createElement('button');
+      botonEliminar.className = 'btn btn-outline-danger btn-sm';
+      botonEliminar.textContent = 'Eliminar';
+
+      // Evento click para eliminar el registro del arreglo y volver a renderizar
+      botonEliminar.addEventListener('click', function () {
+        solicitudes = solicitudes.filter(function (s) {
+          return s.id !== solicitud.id;
+        });
+        renderSolicitudes();
+        mostrarMensaje('Solicitud eliminada correctamente.', 'success');
+      });
+
+      item.appendChild(contenido);
+      item.appendChild(botonEliminar);
+      listaSolicitudes.appendChild(item);
+    });
+  }
+
+  // Agrega una nueva solicitud al arreglo de datos y vuelve a renderizar la lista
   function crearSolicitud(nombre, categoria, descripcion) {
-
-    // Elemento contenedor de la solicitud (li de Bootstrap)
-    const item = document.createElement('li');
-    item.className = 'list-group-item d-flex justify-content-between align-items-start flex-wrap';
-
-    // Contenedor del texto de la solicitud
-    const contenido = document.createElement('div');
-    contenido.className = 'me-auto';
-
-    const tituloNombre = document.createElement('strong');
-    tituloNombre.textContent = nombre;
-
-    const badgeCategoria = document.createElement('span');
-    badgeCategoria.className = 'badge bg-secondary ms-2';
-    badgeCategoria.textContent = categoria;
-
-    const textoDescripcion = document.createElement('p');
-    textoDescripcion.className = 'mb-0 text-muted';
-    textoDescripcion.textContent = descripcion;
-
-    contenido.appendChild(tituloNombre);
-    contenido.appendChild(badgeCategoria);
-    contenido.appendChild(textoDescripcion);
-
-    // Botón para eliminar la solicitud
-    const botonEliminar = document.createElement('button');
-    botonEliminar.className = 'btn btn-outline-danger btn-sm';
-    botonEliminar.textContent = 'Eliminar';
-
-    // Evento click para eliminar el registro
-    botonEliminar.addEventListener('click', function () {
-      listaSolicitudes.removeChild(item);
-      totalSolicitudes--;
-      actualizarContador();
-      mostrarMensaje('Solicitud eliminada correctamente.', 'success');
+    solicitudes.push({
+      id: siguienteId++,
+      nombre: nombre,
+      categoria: categoria,
+      descripcion: descripcion
     });
 
-    item.appendChild(contenido);
-    item.appendChild(botonEliminar);
-
-    // Agregar la nueva solicitud a la lista en pantalla
-    listaSolicitudes.appendChild(item);
-
-    totalSolicitudes++;
-    actualizarContador();
+    renderSolicitudes();
   }
 
-  // Captura del evento submit del formulario
+  // Captura del evento submit del formulario (validaciones de la Semana 6, sin cambios)
   formSolicitud.addEventListener('submit', function (evento) {
 
     // Evita que la página se recargue
@@ -98,7 +190,7 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    // Si la validación es correcta, se crea el registro
+    // Si la validación es correcta, se registra en el arreglo y se renderiza
     crearSolicitud(nombre, categoria, descripcion);
     mostrarMensaje('Solicitud registrada exitosamente.', 'success');
 
@@ -106,5 +198,8 @@ document.addEventListener('DOMContentLoaded', function () {
     formSolicitud.reset();
     nombreCliente.focus();
   });
+
+  // Render inicial: muestra el mensaje de estado vacío al cargar la página
+  renderSolicitudes();
 
 });
