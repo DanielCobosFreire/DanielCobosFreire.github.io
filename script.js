@@ -2,6 +2,10 @@
 // CSi - CoFre Sistemas Informáticos
 // Semana 7: contenido dinámico renderizado desde arreglos/objetos,
 // estructura pensada para una futura migración a plantillas de Flask.
+// Semana 8: se conserva toda la lógica anterior (validaciones y renderizado
+// dinámico) y se incorporan dos componentes Bootstrap controlados desde JS:
+//   - Spinner: simula un proceso de registro antes de insertar la solicitud.
+//   - Modal: reemplaza la eliminación directa por una confirmación explícita.
 //
 // Cada función de "render" de este archivo simula lo que en Flask sería
 // un {% for %} recorriendo datos que en el futuro vendrán de una base
@@ -81,10 +85,25 @@ document.addEventListener('DOMContentLoaded', function () {
   const listaSolicitudes = document.getElementById('listaSolicitudes');
   const contadorSolicitudes = document.getElementById('contadorSolicitudes');
 
+  // Semana 8: referencias al botón/spinner de registro y al modal de confirmación
+  const btnRegistrar = document.getElementById('btnRegistrar');
+  const spinnerRegistrar = document.getElementById('spinnerRegistrar');
+  const textoBtnRegistrar = document.getElementById('textoBtnRegistrar');
+
+  const elementoModalEliminar = document.getElementById('modalConfirmarEliminar');
+  const modalConfirmarEliminar = new bootstrap.Modal(elementoModalEliminar);
+  const modalNombreSolicitud = document.getElementById('modalNombreSolicitud');
+  const modalCategoriaSolicitud = document.getElementById('modalCategoriaSolicitud');
+  const modalDescripcionSolicitud = document.getElementById('modalDescripcionSolicitud');
+  const btnConfirmarEliminar = document.getElementById('btnConfirmarEliminar');
+
   // Arreglo de objetos: representa los datos de las solicitudes registradas.
   // Cada solicitud es un objeto con id, nombre, categoría y descripción.
   let solicitudes = [];
   let siguienteId = 1;
+
+  // Guarda temporalmente el id de la solicitud que el modal está por eliminar
+  let idPendienteEliminar = null;
 
   // Función para mostrar mensajes de validación al usuario (Semana 6, sin cambios)
   function mostrarMensaje(texto, tipo) {
@@ -147,13 +166,14 @@ document.addEventListener('DOMContentLoaded', function () {
       botonEliminar.className = 'btn btn-outline-danger btn-sm';
       botonEliminar.textContent = 'Eliminar';
 
-      // Evento click para eliminar el registro del arreglo y volver a renderizar
+      // Semana 8: en lugar de eliminar directo, se abre el modal Bootstrap
+      // de confirmación con los datos de la solicitud seleccionada.
       botonEliminar.addEventListener('click', function () {
-        solicitudes = solicitudes.filter(function (s) {
-          return s.id !== solicitud.id;
-        });
-        renderSolicitudes();
-        mostrarMensaje('Solicitud eliminada correctamente.', 'success');
+        idPendienteEliminar = solicitud.id;
+        modalNombreSolicitud.textContent = solicitud.nombre;
+        modalCategoriaSolicitud.textContent = solicitud.categoria;
+        modalDescripcionSolicitud.textContent = solicitud.descripcion;
+        modalConfirmarEliminar.show();
       });
 
       item.appendChild(contenido);
@@ -161,6 +181,21 @@ document.addEventListener('DOMContentLoaded', function () {
       listaSolicitudes.appendChild(item);
     });
   }
+
+  // Semana 8: al confirmar en el modal, se elimina la solicitud pendiente,
+  // se cierra el modal y se muestra el mensaje de éxito.
+  btnConfirmarEliminar.addEventListener('click', function () {
+    if (idPendienteEliminar === null) return;
+
+    solicitudes = solicitudes.filter(function (s) {
+      return s.id !== idPendienteEliminar;
+    });
+
+    renderSolicitudes();
+    modalConfirmarEliminar.hide();
+    mostrarMensaje('Solicitud eliminada correctamente.', 'success');
+    idPendienteEliminar = null;
+  });
 
   // Agrega una nueva solicitud al arreglo de datos y vuelve a renderizar la lista
   function crearSolicitud(nombre, categoria, descripcion) {
@@ -190,13 +225,26 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    // Si la validación es correcta, se registra en el arreglo y se renderiza
-    crearSolicitud(nombre, categoria, descripcion);
-    mostrarMensaje('Solicitud registrada exitosamente.', 'success');
+    // Semana 8: se simula un proceso de registro (ej. envío a un futuro backend
+    // Flask) mostrando un spinner Bootstrap y deshabilitando el botón mientras dura.
+    btnRegistrar.disabled = true;
+    spinnerRegistrar.classList.remove('d-none');
+    textoBtnRegistrar.textContent = 'Registrando...';
 
-    // Limpiar el formulario para un nuevo registro
-    formSolicitud.reset();
-    nombreCliente.focus();
+    setTimeout(function () {
+      // Una vez "terminado" el proceso simulado, se registra en el arreglo
+      crearSolicitud(nombre, categoria, descripcion);
+      mostrarMensaje('Solicitud registrada exitosamente.', 'success');
+
+      // Limpiar el formulario para un nuevo registro
+      formSolicitud.reset();
+      nombreCliente.focus();
+
+      // Restaurar el botón a su estado normal
+      btnRegistrar.disabled = false;
+      spinnerRegistrar.classList.add('d-none');
+      textoBtnRegistrar.textContent = 'Registrar Solicitud';
+    }, 900);
   });
 
   // Render inicial: muestra el mensaje de estado vacío al cargar la página

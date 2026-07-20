@@ -153,7 +153,11 @@ footer{background:#030a14;padding:20px}
 
 <div id="mensajeValidacion" class="alert d-none" role="alert"></div>
 
-<button type="submit" class="btn btn-info w-100">Registrar Solicitud</button>
+<!-- Botón con spinner Bootstrap: simula un proceso de registro (ej. envío a servidor) -->
+<button type="submit" class="btn btn-info w-100" id="btnRegistrar">
+<span class="spinner-border spinner-border-sm d-none me-2" id="spinnerRegistrar" role="status" aria-hidden="true"></span>
+<span id="textoBtnRegistrar">Registrar Solicitud</span>
+</button>
 </form>
 </div>
 </div>
@@ -174,7 +178,34 @@ footer{background:#030a14;padding:20px}
 </ul>
 </div>
 </div>
+
+<!-- ============================
+     Modal Bootstrap: confirmación de eliminación de solicitud
+     Se abre al pulsar "Eliminar" en cualquier registro de la lista.
+     ============================ -->
+<div class="modal fade" id="modalConfirmarEliminar" tabindex="-1" aria-labelledby="modalConfirmarEliminarLabel" aria-hidden="true">
+<div class="modal-dialog modal-dialog-centered">
+<div class="modal-content text-dark">
+<div class="modal-header">
+<h5 class="modal-title" id="modalConfirmarEliminarLabel">Confirmar eliminación</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
 </div>
+<div class="modal-body">
+<p>¿Está seguro de que desea eliminar la siguiente solicitud?</p>
+<p class="mb-1">
+<strong id="modalNombreSolicitud"></strong>
+<span id="modalCategoriaSolicitud" class="badge bg-secondary ms-2"></span>
+</p>
+<p class="text-muted mb-0" id="modalDescripcionSolicitud"></p>
+</div>
+<div class="modal-footer">
+<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+<button type="button" class="btn btn-danger" id="btnConfirmarEliminar">Sí, eliminar</button>
+</div>
+</div>
+</div>
+</div>
+
 </section>
 
 <section class="seccion">
