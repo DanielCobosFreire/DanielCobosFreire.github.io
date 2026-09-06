@@ -22,6 +22,20 @@
      usando "extends base.html" y definiendo su propio bloque "content".
      ============================================================ -->
 <main>
+<!-- Semana 11: mensajes flash (ej. "Producto registrado correctamente")
+     generados desde app.py tras procesar un formulario válido. -->
+<div class="container mt-3">
+{% with mensajes = get_flashed_messages(with_categories=true) %}
+{% if mensajes %}
+{% for categoria, mensaje in mensajes %}
+<div class="alert alert-{{ categoria }} alert-dismissible fade show" role="alert">
+{{ mensaje }}
+<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
+</div>
 {% block content %}{% endblock %}
 </main>
 
