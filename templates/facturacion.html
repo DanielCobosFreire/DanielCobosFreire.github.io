@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Facturación | CSi{% endblock %}
+
+{% block content %}
+<section class="seccion">
+<div class="container">
+<h2 class="mb-2">Módulo de Facturación</h2>
+<p class="text-light mb-4">Facturas emitidas por CSi. Datos de ejemplo, sin conexión a base de datos aún.</p>
+
+<div class="table-responsive">
+<table class="table table-dark table-striped align-middle">
+<thead>
+<tr>
+<th>N° Factura</th>
+<th>Cliente</th>
+<th>Fecha</th>
+<th>Total</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+{% for factura in facturas %}
+<tr>
+<!-- Semana 10: filtro |upper aplicado a un valor recorrido con el bucle for -->
+<td>{{ factura.numero|upper }}</td>
+<td>{{ factura.cliente }}</td>
+<td>{{ factura.fecha }}</td>
+<td>${{ '%.2f'|format(factura.total) }}</td>
+<td>
+<!-- Condicional if / else según el estado de la factura -->
+{% if factura.estado == 'Pagada' %}
+<span class="badge bg-success">{{ factura.estado }}</span>
+{% else %}
+<span class="badge bg-warning text-dark">{{ factura.estado }}</span>
+{% endif %}
+</td>
+</tr>
+{% else %}
+<tr>
+<td colspan="5" class="text-center text-muted">No hay facturas registradas por el momento.</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+</div>
+</section>
+{% endblock %}

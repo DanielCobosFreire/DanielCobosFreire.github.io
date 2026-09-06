@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Proveedores | CSi{% endblock %}
+
+{% block content %}
+<section class="seccion">
+<div class="container">
+<h2 class="mb-2">Módulo de Proveedores</h2>
+<p class="text-light mb-4">Proveedores con los que trabaja CSi. Datos de ejemplo, sin conexión a base de datos aún.</p>
+
+<div class="table-responsive">
+<table class="table table-dark table-striped align-middle">
+<thead>
+<tr>
+<th>Proveedor</th>
+<th>Producto / Servicio</th>
+<th>Contacto</th>
+</tr>
+</thead>
+<tbody>
+{% for proveedor in proveedores %}
+<tr>
+<td>{{ proveedor.nombre }}</td>
+<td>{{ proveedor.producto }}</td>
+<!-- Semana 10: filtro |lower aplicado a un valor recorrido con el bucle for -->
+<td>{{ proveedor.contacto|lower }}</td>
+</tr>
+{% else %}
+<tr>
+<td colspan="3" class="text-center text-muted">No hay proveedores registrados por el momento.</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+</div>
+</section>
+{% endblock %}

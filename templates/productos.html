@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Productos | CSi{% endblock %}
+
+{% block content %}
+<section class="seccion">
+<div class="container">
+<h2 class="mb-2">Módulo de Productos</h2>
+<p class="text-light mb-4">Listado de productos y servicios ofrecidos por CSi. Datos de ejemplo, sin conexión a base de datos aún.</p>
+
+<div class="table-responsive">
+<table class="table table-dark table-striped align-middle">
+<thead>
+<tr>
+<th>Nombre</th>
+<th>Categoría</th>
+<th>Precio</th>
+<th>Disponibilidad</th>
+</tr>
+</thead>
+<tbody>
+{% for producto in productos %}
+<tr>
+<td>{{ producto.nombre }}</td>
+<!-- Semana 10: filtro |upper aplicado a un valor recorrido con el bucle for -->
+<td><span class="badge bg-info text-dark">{{ producto.categoria|upper }}</span></td>
+<td>${{ '%.2f'|format(producto.precio) }}</td>
+<td>
+<!-- Semana 10: condicional if / elif / else según el
+     estado del dato "stock" (None = servicio, 0 = agotado, >0 = disponible) -->
+{% if producto.stock is none %}
+<span class="badge bg-secondary">Servicio</span>
+{% elif producto.stock > 0 %}
+<span class="badge bg-success">Disponible ({{ producto.stock }})</span>
+{% else %}
+<span class="badge bg-danger">Agotado</span>
+{% endif %}
+</td>
+</tr>
+{% else %}
+<tr>
+<td colspan="4" class="text-center text-muted">No hay productos registrados por el momento.</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+</div>
+</section>
+{% endblock %}
