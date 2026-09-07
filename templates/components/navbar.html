@@ -1,6 +1,25 @@
-<nav class="navbar navbar-expand-lg navbar-dark sticky-top csi-nav"><div class="container">
-<a class="navbar-brand fw-bold" href="{{ url_for('index') }}"><span class="brand-mark">CSi</span> CoFre Sistemas Informáticos</a>
-<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Abrir navegación"><span class="navbar-toggler-icon"></span></button>
-<div class="collapse navbar-collapse" id="mainNav"><ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
-<li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Inicio</a></li><li class="nav-item"><a class="nav-link" href="{{ url_for('productos') }}">Productos</a></li><li class="nav-item"><a class="nav-link" href="{{ url_for('clientes') }}">Clientes</a></li><li class="nav-item"><a class="nav-link" href="{{ url_for('proveedores') }}">Proveedores</a></li><li class="nav-item"><a class="nav-link" href="{{ url_for('facturacion') }}">Facturación</a></li><li class="nav-item"><a class="btn btn-info ms-lg-2" href="{{ url_for('solicitudes') }}">Solicitudes</a></li>
-</ul></div></div></nav>
+<!-- ============================================================
+     components/navbar.html
+     Semana 10: navbar extraída como componente reutilizable.
+     Se incluye en base.html mediante la instrucción include de Jinja,
+     en lugar de repetirse manualmente en cada plantilla.
+     ============================================================ -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+<div class="container">
+<a class="navbar-brand" href="{{ url_for('index') }}">CSi</a>
+<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menu">
+<span class="navbar-toggler-icon"></span>
+</button>
+
+<div class="collapse navbar-collapse" id="menu">
+<ul class="navbar-nav ms-auto">
+<li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Inicio</a></li>
+<li class="nav-item"><a class="nav-link" href="{{ url_for('productos') }}">Productos</a></li>
+<li class="nav-item"><a class="nav-link" href="{{ url_for('clientes') }}">Clientes</a></li>
+<li class="nav-item"><a class="nav-link" href="{{ url_for('proveedores') }}">Proveedores</a></li>
+<li class="nav-item"><a class="nav-link" href="{{ url_for('facturacion') }}">Facturación</a></li>
+<li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#contacto">Contacto</a></li>
+</ul>
+</div>
+</div>
+</nav>
