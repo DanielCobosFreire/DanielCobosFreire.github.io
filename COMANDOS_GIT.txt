@@ -1,6 +1,0 @@
-# Ejecutar estos comandos dentro de tu copia local del repositorio Semana_011
-
-git status
-git add .
-git commit -m "Semana 12: persistencia SQLite, CSRF global y mejoras CSi"
-git push origin main
