@@ -1,261 +1,540 @@
 # app.py
 # CSi - CoFre Sistemas Informáticos
-# Semana 9: configuración del proyecto con Flask y manejo de rutas.
-# Semana 10: contenido dinámico con Jinja2 (variables, listas, diccionarios,
-# estructuras repetitivas, condicionales y filtros).
-# Semana 11: se incorporan formularios con Flask-WTF y WTForms, validación
-# del lado del servidor, protección CSRF y una SECRET_KEY. Los datos siguen
-# siendo estructuras de Python en memoria (sin base de datos todavía); ahora
-# viven a nivel de módulo para que los registros creados/editados desde los
-# formularios persistan mientras la aplicación esté corriendo.
+# Proyecto Integrador - continuidad Semanas 9, 10, 11 y Avance Semana 12
+# Semana 12: persistencia local con SQLite manteniendo Flask-WTF/WTForms,
+# validaciones del servidor, métodos GET/POST, Jinja2, SECRET_KEY y CSRF.
 
+import os
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 
-from flask import Flask, render_template, redirect, url_for, flash
+from flask import Flask, flash, redirect, render_template, request, url_for
+from flask_wtf.csrf import CSRFError, CSRFProtect
 
-from forms.producto_form import ProductoForm
 from forms.cliente_form import ClienteForm
-from forms.proveedor_form import ProveedorForm
 from forms.facturacion_form import FacturacionForm
+from forms.producto_form import ProductoForm
+from forms.proveedor_form import ProveedorForm
+from forms.solicitud_form import SolicitudForm
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+DB_PATH = DATA_DIR / "csi.db"  # Se mantiene el nombre solicitado para el proyecto CSi.
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv(
+    "SECRET_KEY", "csi-clave-secreta-semana12-cambiar-en-produccion"
+)
+app.config["WTF_CSRF_ENABLED"] = True
 
-# Semana 11: SECRET_KEY necesaria para que Flask-WTF pueda generar y
-# validar el token CSRF de cada formulario. En un entorno real se leería
-# desde una variable de entorno; aquí se deja un valor fijo para que el
-# proyecto funcione de inmediato al ejecutarlo localmente.
-app.config['SECRET_KEY'] = 'csi-clave-secreta-semana11-cambiar-en-produccion'
+# Protección CSRF global: protege también los POST que no usan una clase FlaskForm,
+# como los botones de eliminación.
+csrf = CSRFProtect(app)
 
-
-# =============================================================================
-# Diccionario con información general de la empresa (Semana 10).
-# =============================================================================
 empresa_info = {
-    'nombre': 'CSi - CoFre Sistemas Informáticos',
-    'slogan': 'Consultoría tecnológica, desarrollo web, soporte TI y transformación digital.',
-    'anio_fundacion': 2024,
-    'mision': (
-        'Optimizar procesos de empresas y emprendedores mediante herramientas '
-        'digitales modernas, seguras y escalables.'
+    "nombre": "CSi - CoFre Sistemas Informáticos",
+    "marca": "CSi",
+    "slogan": "Tecnología que resuelve, conecta y hace crecer.",
+    "descripcion": (
+        "Consultoría tecnológica, desarrollo web, soporte TI e infraestructura "
+        "para empresas, profesionales y emprendimientos."
     ),
-    'servicios_destacados': ['Desarrollo Web', 'Consultoría IT', 'Soporte Técnico'],
+    "anio_fundacion": 2024,
 }
 
 
-# =============================================================================
-# Semana 11: los datos de ejemplo pasan a vivir a nivel de módulo (listas
-# mutables) en lugar de crearse dentro de cada función de vista. Así, los
-# registros que se agreguen o editen desde los formularios se conservan
-# mientras el servidor de desarrollo siga corriendo. Sigue sin usarse una
-# base de datos: es el mismo tipo de estructura de Python de semanas
-# anteriores, solo que ahora es compartida entre las vistas de listado y
-# las vistas de formulario.
-# =============================================================================
-productos_data = [
-    {'nombre': 'Laptop HP 15"', 'categoria': 'Equipos', 'precio': 650.00, 'stock': 12},
-    {'nombre': 'Monitor LG 24"', 'categoria': 'Equipos', 'precio': 180.00, 'stock': 20},
-    {'nombre': 'Licencia Windows 11 Pro', 'categoria': 'Software', 'precio': 199.00, 'stock': 50},
-    {'nombre': 'Teclado Mecánico RGB', 'categoria': 'Equipos', 'precio': 55.00, 'stock': 0},
-    {'nombre': 'Servicio de Mantenimiento IT', 'categoria': 'Servicios', 'precio': 45.00, 'stock': None},
-]
+def get_db_connection():
+    """Abre una conexión SQLite y permite acceder a las columnas por nombre."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-clientes_data = [
-    {'nombre': 'Juan Pérez', 'empresa': 'Ferretería El Tornillo',
-     'correo': 'juan.perez@ejemplo.com', 'telefono': '098-123-4567', 'activo': True},
-    {'nombre': 'María Torres', 'empresa': 'Panadería Dulce Trigo',
-     'correo': 'maria.torres@ejemplo.com', 'telefono': '099-234-5678', 'activo': True},
-    {'nombre': 'Carlos Mendoza', 'empresa': 'Colegio San Andrés',
-     'correo': 'carlos.mendoza@ejemplo.com', 'telefono': '098-345-6789', 'activo': False},
-]
 
-proveedores_data = [
-    {'nombre': 'TecnoSuministros S.A.', 'producto': 'Equipos de cómputo',
-     'contacto': 'ventas@tecnosuministros.com'},
-    {'nombre': 'DistriSoft Ecuador', 'producto': 'Licencias de software',
-     'contacto': 'contacto@distrisoft.ec'},
-    {'nombre': 'RedNet Cía. Ltda.', 'producto': 'Infraestructura de red',
-     'contacto': 'info@rednet.ec'},
-]
+def init_db():
+    """Crea las tablas si todavía no existen. La BD nunca se elimina al iniciar."""
+    conn = get_db_connection()
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS productos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            categoria TEXT NOT NULL,
+            precio REAL NOT NULL CHECK (precio > 0),
+            stock INTEGER CHECK (stock IS NULL OR stock >= 0)
+        );
 
-facturas_data = [
-    {'numero': 'F-001', 'cliente': 'Juan Pérez', 'fecha': '2026-08-01',
-     'total': 850.00, 'estado': 'Pagada'},
-    {'numero': 'F-002', 'cliente': 'María Torres', 'fecha': '2026-08-05',
-     'total': 199.00, 'estado': 'Pendiente'},
-    {'numero': 'F-003', 'cliente': 'Carlos Mendoza', 'fecha': '2026-08-10',
-     'total': 45.00, 'estado': 'Pagada'},
-]
+        CREATE TABLE IF NOT EXISTS clientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            empresa TEXT NOT NULL,
+            correo TEXT NOT NULL,
+            telefono TEXT NOT NULL,
+            activo INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS proveedores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            producto TEXT NOT NULL,
+            contacto TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS facturas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero TEXT NOT NULL UNIQUE,
+            cliente TEXT NOT NULL,
+            fecha TEXT NOT NULL,
+            total REAL NOT NULL CHECK (total > 0),
+            estado TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS solicitudes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            correo TEXT NOT NULL,
+            categoria TEXT NOT NULL,
+            descripcion TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'Pendiente',
+            creada_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def seed_db():
+    """Carga ejemplos solo cuando una tabla está vacía; no borra registros existentes."""
+    conn = get_db_connection()
+
+    if conn.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 0:
+        conn.executemany(
+            "INSERT INTO productos (nombre, categoria, precio, stock) VALUES (?, ?, ?, ?)",
+            [
+                ('Laptop HP 15"', "Equipos", 650.00, 12),
+                ('Monitor LG 24"', "Equipos", 180.00, 20),
+                ("Licencia Windows 11 Pro", "Software", 199.00, 50),
+                ("Servicio de Mantenimiento IT", "Servicios", 45.00, None),
+            ],
+        )
+
+    if conn.execute("SELECT COUNT(*) FROM clientes").fetchone()[0] == 0:
+        conn.executemany(
+            """
+            INSERT INTO clientes (nombre, empresa, correo, telefono, activo)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                ("Juan Pérez", "Comercial Andino", "juan.perez@ejemplo.com", "0981234567", 1),
+                ("María Torres", "Emprendimiento Horizonte", "maria.torres@ejemplo.com", "0992345678", 1),
+            ],
+        )
+
+    if conn.execute("SELECT COUNT(*) FROM proveedores").fetchone()[0] == 0:
+        conn.executemany(
+            "INSERT INTO proveedores (nombre, producto, contacto) VALUES (?, ?, ?)",
+            [
+                ("TecnoSuministros S.A.", "Equipos de cómputo", "ventas@tecnosuministros.com"),
+                ("DistriSoft Ecuador", "Licencias de software", "contacto@distrisoft.ec"),
+            ],
+        )
+
+    if conn.execute("SELECT COUNT(*) FROM facturas").fetchone()[0] == 0:
+        conn.executemany(
+            "INSERT INTO facturas (numero, cliente, fecha, total, estado) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("F-001", "Juan Pérez", "2026-09-01", 850.00, "Pagada"),
+                ("F-002", "María Torres", "2026-09-03", 199.00, "Pendiente"),
+            ],
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def fetch_all(query, params=()):
+    """Ejecuta SELECT parametrizado y recupera los registros con fetchall()."""
+    conn = get_db_connection()
+    registros = conn.execute(query, params).fetchall()
+    conn.close()
+    return registros
+
+
+def fetch_one(query, params=()):
+    conn = get_db_connection()
+    registro = conn.execute(query, params).fetchone()
+    conn.close()
+    return registro
+
+
+init_db()
+seed_db()
 
 
 @app.context_processor
 def inyectar_variables_globales():
-    """Variable simple 'anio_actual' disponible en todas las plantillas (Semana 10)."""
-    return {'anio_actual': datetime.now().year}
+    return {
+        "anio_actual": datetime.now().year,
+        "empresa": empresa_info,
+    }
 
 
-# =============================================================================
-# Página principal y módulos de listado (Semana 9-10, sin cambios de fondo)
-# =============================================================================
+@app.errorhandler(CSRFError)
+def manejar_error_csrf(error):
+    flash(
+        "No se pudo validar el formulario. Actualice la página e inténtelo nuevamente.",
+        "danger",
+    )
+    return redirect(request.referrer or url_for("index"))
 
-@app.route('/')
+
+@app.route("/")
 def index():
-    """Página principal informativa (Quiénes somos, Servicios, Solicitudes, Contacto)."""
-    return render_template('index.html', empresa=empresa_info)
+    servicios = fetch_all(
+        "SELECT * FROM productos WHERE categoria = ? ORDER BY id DESC LIMIT 6",
+        ("Servicios",),
+    )
+    stats = {
+        "productos": fetch_one("SELECT COUNT(*) AS total FROM productos")["total"],
+        "clientes": fetch_one("SELECT COUNT(*) AS total FROM clientes")["total"],
+        "solicitudes": fetch_one("SELECT COUNT(*) AS total FROM solicitudes")["total"],
+    }
+    return render_template("index.html", servicios=servicios, stats=stats)
 
 
-@app.route('/productos')
+# =============================================================================
+# PRODUCTOS - flujo mínimo exigido Semana 12:
+# Formulario -> validate_on_submit() -> INSERT/UPDATE -> SELECT -> Jinja2
+# =============================================================================
+@app.route("/productos")
 def productos():
-    """Módulo de Productos: listado."""
-    return render_template('productos.html', productos=productos_data)
+    conn = get_db_connection()
+    productos_db = conn.execute("SELECT * FROM productos ORDER BY id DESC").fetchall()
+    conn.close()
+    return render_template("productos.html", productos=productos_db)
 
 
-@app.route('/clientes')
+@app.route("/productos/nuevo", methods=["GET", "POST"])
+@app.route("/productos/editar/<int:item_id>", methods=["GET", "POST"])
+def formulario_producto(item_id=None):
+    registro = fetch_one("SELECT * FROM productos WHERE id = ?", (item_id,)) if item_id else None
+
+    if item_id and registro is None:
+        flash("El producto solicitado no existe.", "danger")
+        return redirect(url_for("productos"))
+
+    form = ProductoForm(data=dict(registro) if registro and request.method == "GET" else None)
+
+    if form.validate_on_submit():
+        conn = get_db_connection()
+
+        if item_id:
+            conn.execute(
+                """
+                UPDATE productos
+                SET nombre = ?, categoria = ?, precio = ?, stock = ?
+                WHERE id = ?
+                """,
+                (
+                    form.nombre.data.strip(),
+                    form.categoria.data,
+                    form.precio.data,
+                    form.stock.data,
+                    item_id,
+                ),
+            )
+            flash("Producto actualizado correctamente.", "success")
+        else:
+            conn.execute(
+                """
+                INSERT INTO productos (nombre, categoria, precio, stock)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    form.nombre.data.strip(),
+                    form.categoria.data,
+                    form.precio.data,
+                    form.stock.data,
+                ),
+            )
+            flash("Producto registrado correctamente y almacenado en SQLite.", "success")
+
+        conn.commit()
+        conn.close()
+        return redirect(url_for("productos"))
+
+    return render_template("formulario_producto.html", form=form, item_id=item_id)
+
+
+@app.post("/productos/eliminar/<int:item_id>")
+def eliminar_producto(item_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM productos WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash("Producto eliminado correctamente.", "warning")
+    return redirect(url_for("productos"))
+
+
+# =============================================================================
+# CLIENTES - persistencia SQLite adicional al mínimo solicitado.
+# =============================================================================
+@app.route("/clientes")
 def clientes():
-    """Módulo de Clientes: listado."""
-    return render_template('clientes.html', clientes=clientes_data)
+    clientes_db = fetch_all("SELECT * FROM clientes ORDER BY id DESC")
+    return render_template("clientes.html", clientes=clientes_db)
 
 
-@app.route('/proveedores')
+@app.route("/clientes/nuevo", methods=["GET", "POST"])
+@app.route("/clientes/editar/<int:item_id>", methods=["GET", "POST"])
+def formulario_cliente(item_id=None):
+    registro = fetch_one("SELECT * FROM clientes WHERE id = ?", (item_id,)) if item_id else None
+
+    if item_id and registro is None:
+        flash("El cliente solicitado no existe.", "danger")
+        return redirect(url_for("clientes"))
+
+    form = ClienteForm(data=dict(registro) if registro and request.method == "GET" else None)
+
+    if form.validate_on_submit():
+        valores = (
+            form.nombre.data.strip(),
+            form.empresa.data.strip(),
+            form.correo.data.strip(),
+            form.telefono.data.strip(),
+            1 if form.activo.data else 0,
+        )
+        conn = get_db_connection()
+        if item_id:
+            conn.execute(
+                """
+                UPDATE clientes
+                SET nombre = ?, empresa = ?, correo = ?, telefono = ?, activo = ?
+                WHERE id = ?
+                """,
+                (*valores, item_id),
+            )
+            flash("Cliente actualizado correctamente.", "success")
+        else:
+            conn.execute(
+                """
+                INSERT INTO clientes (nombre, empresa, correo, telefono, activo)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                valores,
+            )
+            flash("Cliente registrado correctamente.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("clientes"))
+
+    return render_template("formulario_cliente.html", form=form, item_id=item_id)
+
+
+@app.post("/clientes/eliminar/<int:item_id>")
+def eliminar_cliente(item_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM clientes WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash("Cliente eliminado correctamente.", "warning")
+    return redirect(url_for("clientes"))
+
+
+# =============================================================================
+# PROVEEDORES - persistencia SQLite adicional al mínimo solicitado.
+# =============================================================================
+@app.route("/proveedores")
 def proveedores():
-    """Módulo de Proveedores: listado."""
-    return render_template('proveedores.html', proveedores=proveedores_data)
+    proveedores_db = fetch_all("SELECT * FROM proveedores ORDER BY id DESC")
+    return render_template("proveedores.html", proveedores=proveedores_db)
 
 
-@app.route('/facturacion')
+@app.route("/proveedores/nuevo", methods=["GET", "POST"])
+@app.route("/proveedores/editar/<int:item_id>", methods=["GET", "POST"])
+def formulario_proveedor(item_id=None):
+    registro = fetch_one("SELECT * FROM proveedores WHERE id = ?", (item_id,)) if item_id else None
+
+    if item_id and registro is None:
+        flash("El proveedor solicitado no existe.", "danger")
+        return redirect(url_for("proveedores"))
+
+    form = ProveedorForm(data=dict(registro) if registro and request.method == "GET" else None)
+
+    if form.validate_on_submit():
+        valores = (
+            form.nombre.data.strip(),
+            form.producto.data.strip(),
+            form.contacto.data.strip(),
+        )
+        conn = get_db_connection()
+        if item_id:
+            conn.execute(
+                "UPDATE proveedores SET nombre = ?, producto = ?, contacto = ? WHERE id = ?",
+                (*valores, item_id),
+            )
+            flash("Proveedor actualizado correctamente.", "success")
+        else:
+            conn.execute(
+                "INSERT INTO proveedores (nombre, producto, contacto) VALUES (?, ?, ?)",
+                valores,
+            )
+            flash("Proveedor registrado correctamente.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("proveedores"))
+
+    return render_template("formulario_proveedor.html", form=form, item_id=item_id)
+
+
+@app.post("/proveedores/eliminar/<int:item_id>")
+def eliminar_proveedor(item_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM proveedores WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash("Proveedor eliminado correctamente.", "warning")
+    return redirect(url_for("proveedores"))
+
+
+# =============================================================================
+# FACTURACIÓN - persistencia SQLite adicional al mínimo solicitado.
+# =============================================================================
+@app.route("/facturacion")
 def facturacion():
-    """Módulo de Facturación: listado."""
-    return render_template('facturacion.html', facturas=facturas_data)
+    facturas_db = fetch_all("SELECT * FROM facturas ORDER BY fecha DESC, id DESC")
+    return render_template("facturacion.html", facturas=facturas_db)
+
+
+@app.route("/facturacion/nueva", methods=["GET", "POST"])
+@app.route("/facturacion/editar/<int:item_id>", methods=["GET", "POST"])
+def formulario_facturacion(item_id=None):
+    registro = fetch_one("SELECT * FROM facturas WHERE id = ?", (item_id,)) if item_id else None
+
+    if item_id and registro is None:
+        flash("La factura solicitada no existe.", "danger")
+        return redirect(url_for("facturacion"))
+
+    form = FacturacionForm(data=dict(registro) if registro and request.method == "GET" else None)
+
+    if form.validate_on_submit():
+        valores = (
+            form.numero.data.strip().upper(),
+            form.cliente.data.strip(),
+            form.fecha.data.strip(),
+            form.total.data,
+            form.estado.data,
+        )
+        conn = get_db_connection()
+        try:
+            if item_id:
+                conn.execute(
+                    """
+                    UPDATE facturas
+                    SET numero = ?, cliente = ?, fecha = ?, total = ?, estado = ?
+                    WHERE id = ?
+                    """,
+                    (*valores, item_id),
+                )
+                flash("Factura actualizada correctamente.", "success")
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO facturas (numero, cliente, fecha, total, estado)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    valores,
+                )
+                flash("Factura registrada correctamente.", "success")
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            flash("Ya existe una factura con ese número.", "danger")
+            conn.close()
+            return render_template("formulario_facturacion.html", form=form, item_id=item_id)
+
+        conn.close()
+        return redirect(url_for("facturacion"))
+
+    return render_template("formulario_facturacion.html", form=form, item_id=item_id)
+
+
+@app.post("/facturacion/eliminar/<int:item_id>")
+def eliminar_factura(item_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM facturas WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash("Factura eliminada correctamente.", "warning")
+    return redirect(url_for("facturacion"))
 
 
 # =============================================================================
-# Semana 11: formularios con Flask-WTF / WTForms.
-# Cada vista acepta GET (mostrar el formulario, vacío o precargado) y POST
-# (procesar y validar el envío). La misma vista y la misma plantilla sirven
-# tanto para "nuevo" como para "editar", pasando opcionalmente un índice de
-# la lista en memoria (equivalente temporal a un id, hasta que se incorpore
-# una base de datos en un avance posterior).
+# SOLICITUDES - mejora tomada de la página analizada: mesa de ayuda persistente.
 # =============================================================================
-
-@app.route('/productos/nuevo', methods=['GET', 'POST'])
-@app.route('/productos/editar/<int:indice>', methods=['GET', 'POST'])
-def formulario_producto(indice=None):
-    """Registro/edición de un producto. Reutiliza ProductoForm para ambos casos."""
-    if indice is not None:
-        if indice < 0 or indice >= len(productos_data):
-            flash('El producto solicitado no existe.', 'danger')
-            return redirect(url_for('productos'))
-        form = ProductoForm(data=productos_data[indice])
-    else:
-        form = ProductoForm()
-
-    if form.validate_on_submit():
-        registro = {
-            'nombre': form.nombre.data,
-            'categoria': form.categoria.data,
-            'precio': form.precio.data,
-            'stock': form.stock.data,  # None si el campo se dejó en blanco (servicio)
-        }
-        if indice is not None:
-            productos_data[indice] = registro
-            flash('Producto actualizado correctamente.', 'success')
-        else:
-            productos_data.append(registro)
-            flash('Producto registrado correctamente.', 'success')
-        return redirect(url_for('productos'))
-
-    return render_template('formulario_producto.html', form=form, indice=indice)
+@app.route("/solicitudes")
+def solicitudes():
+    solicitudes_db = fetch_all("SELECT * FROM solicitudes ORDER BY id DESC")
+    return render_template("solicitudes.html", solicitudes=solicitudes_db)
 
 
-@app.route('/clientes/nuevo', methods=['GET', 'POST'])
-@app.route('/clientes/editar/<int:indice>', methods=['GET', 'POST'])
-def formulario_cliente(indice=None):
-    """Registro/edición de un cliente. Reutiliza ClienteForm para ambos casos."""
-    if indice is not None:
-        if indice < 0 or indice >= len(clientes_data):
-            flash('El cliente solicitado no existe.', 'danger')
-            return redirect(url_for('clientes'))
-        form = ClienteForm(data=clientes_data[indice])
-    else:
-        form = ClienteForm()
+@app.route("/solicitudes/nueva", methods=["GET", "POST"])
+@app.route("/solicitudes/editar/<int:item_id>", methods=["GET", "POST"])
+def formulario_solicitud(item_id=None):
+    registro = fetch_one("SELECT * FROM solicitudes WHERE id = ?", (item_id,)) if item_id else None
+
+    if item_id and registro is None:
+        flash("La solicitud indicada no existe.", "danger")
+        return redirect(url_for("solicitudes"))
+
+    form = SolicitudForm(data=dict(registro) if registro and request.method == "GET" else None)
 
     if form.validate_on_submit():
-        registro = {
-            'nombre': form.nombre.data,
-            'empresa': form.empresa.data,
-            'correo': form.correo.data,
-            'telefono': form.telefono.data,
-            'activo': form.activo.data,
-        }
-        if indice is not None:
-            clientes_data[indice] = registro
-            flash('Cliente actualizado correctamente.', 'success')
+        valores = (
+            form.nombre.data.strip(),
+            form.correo.data.strip(),
+            form.categoria.data,
+            form.descripcion.data.strip(),
+            form.estado.data,
+        )
+        conn = get_db_connection()
+        if item_id:
+            conn.execute(
+                """
+                UPDATE solicitudes
+                SET nombre = ?, correo = ?, categoria = ?, descripcion = ?, estado = ?
+                WHERE id = ?
+                """,
+                (*valores, item_id),
+            )
+            flash("Solicitud actualizada correctamente.", "success")
         else:
-            clientes_data.append(registro)
-            flash('Cliente registrado correctamente.', 'success')
-        return redirect(url_for('clientes'))
+            conn.execute(
+                """
+                INSERT INTO solicitudes (nombre, correo, categoria, descripcion, estado)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                valores,
+            )
+            flash("Solicitud registrada correctamente.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("solicitudes"))
 
-    return render_template('formulario_cliente.html', form=form, indice=indice)
-
-
-@app.route('/proveedores/nuevo', methods=['GET', 'POST'])
-@app.route('/proveedores/editar/<int:indice>', methods=['GET', 'POST'])
-def formulario_proveedor(indice=None):
-    """Registro/edición de un proveedor. Reutiliza ProveedorForm para ambos casos."""
-    if indice is not None:
-        if indice < 0 or indice >= len(proveedores_data):
-            flash('El proveedor solicitado no existe.', 'danger')
-            return redirect(url_for('proveedores'))
-        form = ProveedorForm(data=proveedores_data[indice])
-    else:
-        form = ProveedorForm()
-
-    if form.validate_on_submit():
-        registro = {
-            'nombre': form.nombre.data,
-            'producto': form.producto.data,
-            'contacto': form.contacto.data,
-        }
-        if indice is not None:
-            proveedores_data[indice] = registro
-            flash('Proveedor actualizado correctamente.', 'success')
-        else:
-            proveedores_data.append(registro)
-            flash('Proveedor registrado correctamente.', 'success')
-        return redirect(url_for('proveedores'))
-
-    return render_template('formulario_proveedor.html', form=form, indice=indice)
+    return render_template("formulario_solicitud.html", form=form, item_id=item_id)
 
 
-@app.route('/facturacion/nueva', methods=['GET', 'POST'])
-@app.route('/facturacion/editar/<int:indice>', methods=['GET', 'POST'])
-def formulario_facturacion(indice=None):
-    """Registro/edición de una factura. Reutiliza FacturacionForm para ambos casos."""
-    if indice is not None:
-        if indice < 0 or indice >= len(facturas_data):
-            flash('La factura solicitada no existe.', 'danger')
-            return redirect(url_for('facturacion'))
-        form = FacturacionForm(data=facturas_data[indice])
-    else:
-        form = FacturacionForm()
-
-    if form.validate_on_submit():
-        registro = {
-            'numero': form.numero.data,
-            'cliente': form.cliente.data,
-            'fecha': form.fecha.data,
-            'total': form.total.data,
-            'estado': form.estado.data,
-        }
-        if indice is not None:
-            facturas_data[indice] = registro
-            flash('Factura actualizada correctamente.', 'success')
-        else:
-            facturas_data.append(registro)
-            flash('Factura registrada correctamente.', 'success')
-        return redirect(url_for('facturacion'))
-
-    return render_template('formulario_facturacion.html', form=form, indice=indice)
+@app.post("/solicitudes/eliminar/<int:item_id>")
+def eliminar_solicitud(item_id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM solicitudes WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash("Solicitud eliminada correctamente.", "warning")
+    return redirect(url_for("solicitudes"))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)

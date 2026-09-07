@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% from '_form_macros.html' import render_field %}
+{% block title %}{{ 'Editar' if item_id else 'Nueva' }} solicitud{% endblock %}
+{% block content %}
+<section class="page-section"><div class="container form-shell">
+  <a class="back-link" href="{{ url_for('solicitudes') }}"><i class="bi bi-arrow-left"></i> Volver a solicitudes</a>
+  <div class="form-card mt-3"><span class="eyebrow">MESA DE AYUDA</span><h1 class="mt-2">{{ 'Editar solicitud' if item_id else 'Nueva solicitud' }}</h1>
+    <form method="post" novalidate>{{ form.hidden_tag() }}
+      {{ render_field(form.nombre) }}{{ render_field(form.correo) }}{{ render_field(form.categoria) }}{{ render_field(form.descripcion, rows=5) }}{{ render_field(form.estado) }}
+      {{ form.submit(class="btn btn-info") }}
+    </form>
+  </div>
+</div></section>
+{% endblock %}

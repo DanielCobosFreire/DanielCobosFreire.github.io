@@ -1,58 +1,7 @@
-{% extends "base.html" %}
-
-{% block title %}Facturación | CSi{% endblock %}
-
-{% block content %}
-<section class="seccion">
-<div class="container">
-<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap">
-<h2 class="mb-0">Módulo de Facturación</h2>
-<!-- Semana 11: enlace a la vista de formulario (Flask-WTF) para registrar una factura -->
-<a href="{{ url_for('formulario_facturacion') }}" class="btn btn-info">+ Nueva Factura</a>
-</div>
-<p class="text-light mb-4">Facturas emitidas por CSi. Datos de ejemplo, sin conexión a base de datos aún.</p>
-
-<div class="table-responsive">
-<table class="table table-dark table-striped align-middle">
-<thead>
-<tr>
-<th>N° Factura</th>
-<th>Cliente</th>
-<th>Fecha</th>
-<th>Total</th>
-<th>Estado</th>
-<th>Acciones</th>
-</tr>
-</thead>
-<tbody>
-{% for factura in facturas %}
-<tr>
-<!-- Semana 10: filtro |upper aplicado a un valor recorrido con el bucle for -->
-<td>{{ factura.numero|upper }}</td>
-<td>{{ factura.cliente }}</td>
-<td>{{ factura.fecha }}</td>
-<td>${{ '%.2f'|format(factura.total) }}</td>
-<td>
-<!-- Condicional if / else según el estado de la factura -->
-{% if factura.estado == 'Pagada' %}
-<span class="badge bg-success">{{ factura.estado }}</span>
-{% else %}
-<span class="badge bg-warning text-dark">{{ factura.estado }}</span>
-{% endif %}
-</td>
-<td>
-<a href="{{ url_for('formulario_facturacion', indice=loop.index0) }}" class="btn btn-outline-light btn-sm">Editar</a>
-</td>
-</tr>
-{% else %}
-<tr>
-<td colspan="6" class="text-center text-muted">No hay facturas registradas por el momento.</td>
-</tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-
-</div>
-</section>
-{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Facturación{% endblock %}
+{% block content %}<section class="page-section"><div class="container">
+<div class="page-header"><div><span class="eyebrow">CONTROL ADMINISTRATIVO</span><h1>Facturación</h1></div><a href="{{ url_for('formulario_facturacion') }}" class="btn btn-info"><i class="bi bi-receipt me-1"></i> Nueva factura</a></div>
+<div class="table-responsive glass-table"><table class="table table-dark table-hover align-middle mb-0"><thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>
+{% for f in facturas %}<tr><td><strong>{{ f.numero }}</strong></td><td>{{ f.cliente }}</td><td>{{ f.fecha }}</td><td>${{ '%.2f'|format(f.total) }}</td><td><span class="badge {{ 'text-bg-success' if f.estado == 'Pagada' else ('text-bg-warning' if f.estado == 'Pendiente' else 'text-bg-secondary') }}">{{ f.estado }}</span></td><td class="text-end text-nowrap"><a class="btn btn-sm btn-outline-info" href="{{ url_for('formulario_facturacion', item_id=f.id) }}">Editar</a> <form method="post" action="{{ url_for('eliminar_factura', item_id=f.id) }}" class="d-inline" data-confirm="¿Eliminar esta factura?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form></td></tr>{% else %}<tr><td colspan="6" class="text-center py-4 text-secondary">No hay facturas.</td></tr>{% endfor %}
+</tbody></table></div></div></section>{% endblock %}

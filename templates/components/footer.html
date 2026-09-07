@@ -1,11 +1,1 @@
-<!-- ============================================================
-     components/footer.html
-     Semana 10: footer extraído como componente reutilizable.
-     Se incluye en base.html mediante la instrucción include de Jinja.
-     Usa la variable simple "anio_actual" enviada desde app.py mediante un
-     context_processor (disponible en todas las plantillas sin repetirla
-     en cada ruta).
-     ============================================================ -->
-<footer class="text-center">
-<p>© {{ anio_actual }} {{ empresa_nombre_footer|default('CSi - CoFre Sistemas Informáticos') }}</p>
-</footer>
+<footer class="footer mt-auto"><div class="container d-flex flex-column flex-md-row justify-content-between gap-2"><span>© {{ anio_actual }} CSi - CoFre Sistemas Informáticos</span><span>Proyecto Integrador · Flask + SQLite</span></div></footer>

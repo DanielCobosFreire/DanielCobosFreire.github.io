@@ -1,0 +1,22 @@
+{% macro render_field(field, rows=None) %}
+<div class="mb-3">
+  {{ field.label(class="form-label fw-semibold") }}
+  {% if field.type == 'BooleanField' %}
+    <div class="form-check form-switch">
+      {{ field(class="form-check-input") }}
+      <label class="form-check-label" for="{{ field.id }}">Sí</label>
+    </div>
+  {% elif field.type == 'SelectField' %}
+    {{ field(class="form-select" + (' is-invalid' if field.errors else '')) }}
+  {% elif field.type == 'TextAreaField' %}
+    {{ field(class="form-control" + (' is-invalid' if field.errors else ''), rows=rows or 5) }}
+  {% else %}
+    {{ field(class="form-control" + (' is-invalid' if field.errors else '')) }}
+  {% endif %}
+  {% if field.errors %}
+    <div class="invalid-feedback d-block">
+      {% for error in field.errors %}<div>{{ error }}</div>{% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endmacro %}
