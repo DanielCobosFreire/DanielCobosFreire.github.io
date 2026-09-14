@@ -1,6 +1,10 @@
 # forms/producto_form.py
 # CSi - CoFre Sistemas Informáticos
 # Semana 11: formulario del módulo de Productos con Flask-WTF y WTForms.
+# Semana 13: se agrega el campo "proveedor" (clave foránea hacia la tabla
+# "proveedores" de PostgreSQL). Sus choices se completan dinámicamente
+# desde app.py con los proveedores existentes en la base de datos, antes
+# de instanciar el formulario en cada request.
 # La misma clase se reutiliza tanto para registrar un producto nuevo como
 # para editar uno existente (ver app.py: vista formulario_producto).
 
@@ -40,6 +44,16 @@ class ProductoForm(FlaskForm):
         'Stock (dejar en blanco si es un servicio)',
         validators=[Optional(),
                     NumberRange(min=0, message='El stock no puede ser negativo.')]
+    )
+
+    # Semana 13: clave foránea hacia proveedores.id_proveedor. El valor es
+    # el id del proveedor como texto ('' = sin proveedor asignado, típico
+    # de un producto tipo "Servicio"). Las choices reales se asignan en
+    # app.py con los proveedores existentes en PostgreSQL antes de validar.
+    proveedor = SelectField(
+        'Proveedor',
+        choices=[('', 'Sin proveedor asignado')],
+        validators=[Optional()]
     )
 
     submit = SubmitField('Guardar Producto')

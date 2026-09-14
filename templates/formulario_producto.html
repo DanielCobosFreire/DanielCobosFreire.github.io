@@ -48,6 +48,15 @@
 {% endfor %}
 </div>
 
+<div class="mb-3">
+<!-- Semana 13: clave foránea hacia proveedores.id_proveedor -->
+{{ form.proveedor.label(class="form-label") }}
+{{ form.proveedor(class=("form-select is-invalid" if form.proveedor.errors else "form-select")) }}
+{% for error in form.proveedor.errors %}
+<div class="invalid-feedback d-block">{{ error }}</div>
+{% endfor %}
+</div>
+
 <div class="d-flex gap-2">
 {{ form.submit(class="btn btn-info flex-grow-1") }}
 <a href="{{ url_for('productos') }}" class="btn btn-outline-secondary">Cancelar</a>

@@ -5,18 +5,22 @@
 # estructuras repetitivas, condicionales y filtros).
 # Semana 11: se incorporan formularios con Flask-WTF y WTForms, validación
 # del lado del servidor, protección CSRF y una SECRET_KEY.
-# Semana 12: se incorpora persistencia real con SQLite para el módulo de
-# Productos (flujo Formulario -> Validación -> INSERT -> SELECT -> Jinja2).
-# Los demás módulos (clientes, proveedores, facturación) se mantienen con
-# listas de Python en memoria, tal como quedaron en la Semana 11, listos
-# para incorporar su propia persistencia en avances posteriores.
+# Semana 12: persistencia local con SQLite para el módulo de Productos.
+# Semana 13: la aplicación evoluciona de SQLite a una base de datos
+# relacional real (PostgreSQL), con un modelo de varias tablas relacionadas
+# mediante FOREIGN KEY (productos.id_proveedor -> proveedores.id_proveedor).
+# El módulo de Productos implementa el flujo completo LISTAR (SELECT +
+# JOIN), AGREGAR (INSERT), MODIFICAR (UPDATE) y ELIMINAR (DELETE) contra
+# PostgreSQL. Clientes, proveedores (como catálogo propio) y facturación
+# se mantienen con listas de Python en memoria, "preparados" para
+# incorporar su propia persistencia en un avance posterior.
 
 import os
-import sqlite3
 from datetime import datetime
-
 from flask import Flask, render_template, redirect, url_for, flash
+from flask_wtf.csrf import CSRFProtect
 
+from conexion import obtener_conexion
 from forms.producto_form import ProductoForm
 from forms.cliente_form import ClienteForm
 from forms.proveedor_form import ProveedorForm
@@ -30,60 +34,70 @@ app = Flask(__name__)
 # proyecto funcione de inmediato al ejecutarlo localmente.
 app.config['SECRET_KEY'] = 'csi-clave-secreta-semana11-cambiar-en-produccion'
 
+# Semana 13: se activa CSRFProtect de forma global. Los formularios basados
+# en FlaskForm (productos, clientes, proveedores, facturación) ya incluían
+# su propio token vía form.hidden_tag(); esto además protege la nueva
+# ruta de eliminación de productos, que envía un POST simple (sin una
+# clase FlaskForm detrás) y usa {{ csrf_token() }} directamente en la plantilla.
+csrf = CSRFProtect(app)
+
 
 # =============================================================================
-# Semana 12: configuración de la base de datos SQLite (data/ferreteria.db).
+# Semana 13: inicialización del esquema relacional en PostgreSQL.
+# Se ejecuta sql/esquema.sql (CREATE TABLE IF NOT EXISTS para las 4 tablas)
+# y, si la tabla productos está vacía, se siembran algunos proveedores y
+# productos de ejemplo para no perder los datos de demostración de
+# semanas anteriores.
 # =============================================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, 'data')
-DB_PATH = os.path.join(DATA_DIR, 'ferreteria.db')
-
-
-def obtener_conexion():
-    """Abre una nueva conexión a la base de datos SQLite.
-    row_factory = sqlite3.Row permite acceder a las columnas por nombre
-    (fila['nombre']) además de por posición, lo que facilita convertirlas
-    a diccionarios para las plantillas Jinja2."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+RUTA_ESQUEMA_SQL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sql', 'esquema.sql')
 
 
 def inicializar_base_datos():
-    """Crea la carpeta data/ y la tabla 'productos' si todavía no existen
-    (CREATE TABLE IF NOT EXISTS), y siembra algunos productos de ejemplo
-    únicamente la primera vez que se ejecuta la aplicación (tabla vacía),
-    para no perder los datos de demostración de semanas anteriores."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-
+    """Crea las tablas del modelo relacional (si no existen) ejecutando
+    sql/esquema.sql, y siembra datos de ejemplo solo la primera vez."""
     conn = obtener_conexion()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS productos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            categoria TEXT NOT NULL,
-            precio REAL NOT NULL,
-            stock INTEGER
-        )
-    ''')
-    conn.commit()
-
-    total = conn.execute('SELECT COUNT(*) AS total FROM productos').fetchone()['total']
-    if total == 0:
-        productos_ejemplo = [
-            ('Laptop HP 15"', 'Equipos', 650.00, 12),
-            ('Monitor LG 24"', 'Equipos', 180.00, 20),
-            ('Licencia Windows 11 Pro', 'Software', 199.00, 50),
-            ('Teclado Mecánico RGB', 'Equipos', 55.00, 0),
-            ('Servicio de Mantenimiento IT', 'Servicios', 45.00, None),
-        ]
-        conn.executemany(
-            'INSERT INTO productos (nombre, categoria, precio, stock) VALUES (?, ?, ?, ?)',
-            productos_ejemplo
-        )
-        conn.commit()
-
+    with conn:
+        with conn.cursor() as cur:
+            with open(RUTA_ESQUEMA_SQL, 'r', encoding='utf-8') as archivo_sql:
+                cur.execute(archivo_sql.read())
+    _sembrar_datos_iniciales(conn)
     conn.close()
+
+
+def _sembrar_datos_iniciales(conn):
+    """Inserta proveedores y productos de ejemplo únicamente si las tablas
+    todavía están vacías (para no duplicar datos en cada reinicio)."""
+    with conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) AS total FROM proveedores')
+        if cur.fetchone()['total'] == 0:
+            cur.execute(
+                'INSERT INTO proveedores (nombre, telefono, correo) VALUES '
+                '(%s, %s, %s), (%s, %s, %s), (%s, %s, %s)',
+                (
+                    'TecnoSuministros S.A.', '02-2345678', 'ventas@tecnosuministros.com',
+                    'DistriSoft Ecuador', '02-3456789', 'contacto@distrisoft.ec',
+                    'RedNet Cía. Ltda.', '02-4567890', 'info@rednet.ec',
+                )
+            )
+
+        cur.execute('SELECT COUNT(*) AS total FROM productos')
+        if cur.fetchone()['total'] == 0:
+            cur.execute('SELECT id_proveedor, nombre FROM proveedores ORDER BY id_proveedor')
+            proveedores = {fila['nombre']: fila['id_proveedor'] for fila in cur.fetchall()}
+
+            productos_ejemplo = [
+                ('Laptop HP 15"', 'Equipos', 650.00, 12, proveedores.get('TecnoSuministros S.A.')),
+                ('Monitor LG 24"', 'Equipos', 180.00, 20, proveedores.get('TecnoSuministros S.A.')),
+                ('Licencia Windows 11 Pro', 'Software', 199.00, 50, proveedores.get('DistriSoft Ecuador')),
+                ('Teclado Mecánico RGB', 'Equipos', 55.00, 0, proveedores.get('TecnoSuministros S.A.')),
+                ('Servicio de Mantenimiento IT', 'Servicios', 45.00, None, None),
+            ]
+            cur.executemany(
+                'INSERT INTO productos (nombre, categoria, precio, stock, id_proveedor) '
+                'VALUES (%s, %s, %s, %s, %s)',
+                productos_ejemplo
+            )
+    conn.commit()
 
 
 # Se inicializa la base de datos al arrancar la aplicación (una sola vez,
@@ -107,10 +121,11 @@ empresa_info = {
 
 
 # =============================================================================
-# Semana 11: datos de ejemplo a nivel de módulo (listas mutables) para los
-# módulos que TODAVÍA no tienen persistencia en base de datos. Productos ya
-# no usa una lista: desde la Semana 12 se almacena en SQLite (ver más abajo
-# 'inicializar_base_datos' y las vistas 'productos' / 'formulario_producto').
+# Datos de ejemplo a nivel de módulo (listas mutables) para los módulos que
+# TODAVÍA no tienen persistencia en base de datos. Productos ya no usa una
+# lista ni SQLite: desde la Semana 13 se almacena en PostgreSQL (ver
+# inicializar_base_datos, y las vistas 'productos' / 'formulario_producto'
+# / 'eliminar_producto' más abajo).
 # =============================================================================
 clientes_data = [
     {'nombre': 'Juan Pérez', 'empresa': 'Ferretería El Tornillo',
@@ -159,17 +174,26 @@ def index():
 @app.route('/productos')
 def productos():
     """Módulo de Productos: listado.
-    Semana 12: los registros ya no vienen de una lista de Python, sino de
-    una consulta SELECT a la base de datos SQLite (data/ferreteria.db)."""
+    Semana 13: SELECT con JOIN hacia proveedores (clave foránea
+    productos.id_proveedor -> proveedores.id_proveedor) para mostrar el
+    nombre del proveedor de cada producto, no solo su id."""
     conn = obtener_conexion()
-    filas = conn.execute('SELECT id, nombre, categoria, precio, stock FROM productos ORDER BY id').fetchall()
+    with conn.cursor() as cur:
+        cur.execute('''
+            SELECT p.id_producto, p.nombre, p.categoria, p.precio, p.stock,
+                   pr.id_proveedor AS id_proveedor,
+                   pr.nombre AS proveedor_nombre
+            FROM productos p
+            LEFT JOIN proveedores pr ON p.id_proveedor = pr.id_proveedor
+            ORDER BY p.id_producto
+        ''')
+        filas = cur.fetchall()
     conn.close()
 
-    # Se convierte cada sqlite3.Row a un diccionario para que la plantilla
-    # productos.html siga usando la misma sintaxis Jinja2 de siempre
-    # ({{ producto.nombre }}, {{ producto.stock }}, etc.).
-    productos_lista = [dict(fila) for fila in filas]
-    return render_template('productos.html', productos=productos_lista)
+    # RealDictCursor ya entrega cada fila como diccionario, listo para
+    # que productos.html siga usando {{ producto.nombre }}, {{ producto.stock }},
+    # {{ producto.proveedor_nombre }}, etc.
+    return render_template('productos.html', productos=filas)
 
 
 @app.route('/clientes')
@@ -195,55 +219,87 @@ def facturacion():
 # Cada vista acepta GET (mostrar el formulario, vacío o precargado) y POST
 # (procesar y validar el envío). La misma vista y la misma plantilla sirven
 # tanto para "nuevo" como para "editar".
-# Productos (Semana 12) usa el id real de SQLite; clientes, proveedores y
-# facturación siguen usando el índice de su lista en memoria, a la espera
-# de incorporar su propia persistencia en un avance posterior.
+# Productos (Semana 13) usa el id_producto real de PostgreSQL, incluyendo
+# la clave foránea hacia proveedores; clientes, proveedores y facturación
+# siguen usando el índice de su lista en memoria, a la espera de
+# incorporar su propia persistencia en un avance posterior.
 # =============================================================================
+
+def _obtener_choices_proveedores():
+    """Consulta los proveedores existentes en PostgreSQL y arma la lista de
+    choices para el SelectField 'proveedor' del formulario. Se incluye
+    siempre la opción "Sin proveedor asignado" (id vacío -> NULL en la BD)."""
+    conn = obtener_conexion()
+    with conn.cursor() as cur:
+        cur.execute('SELECT id_proveedor, nombre FROM proveedores ORDER BY nombre')
+        filas = cur.fetchall()
+    conn.close()
+    choices = [('', 'Sin proveedor asignado')]
+    choices += [(str(fila['id_proveedor']), fila['nombre']) for fila in filas]
+    return choices
+
 
 @app.route('/productos/nuevo', methods=['GET', 'POST'])
 @app.route('/productos/editar/<int:producto_id>', methods=['GET', 'POST'])
 def formulario_producto(producto_id=None):
     """Registro/edición de un producto. Reutiliza ProductoForm para ambos casos.
 
-    Semana 12: en lugar de una lista de Python, el producto se busca,
-    inserta o actualiza directamente en SQLite. 'producto_id' es ahora la
-    clave primaria real de la tabla 'productos' (columna id), no un simple
-    índice de lista como en los demás módulos."""
+    Semana 13: el producto se busca, inserta o actualiza directamente en
+    PostgreSQL, incluyendo la clave foránea hacia proveedores. 'producto_id'
+    es la clave primaria real de la tabla 'productos' (columna id_producto)."""
     conn = obtener_conexion()
 
     if producto_id is not None:
-        fila = conn.execute('SELECT * FROM productos WHERE id = ?', (producto_id,)).fetchone()
+        with conn.cursor() as cur:
+            cur.execute('SELECT * FROM productos WHERE id_producto = %s', (producto_id,))
+            fila = cur.fetchone()
         if fila is None:
             conn.close()
             flash('El producto solicitado no existe.', 'danger')
             return redirect(url_for('productos'))
-        form = ProductoForm(data=dict(fila))
+
+        datos_iniciales = dict(fila)
+        # El SelectField "proveedor" espera un string; la BD guarda un
+        # entero (o NULL). '' representa "Sin proveedor asignado".
+        datos_iniciales['proveedor'] = (
+            str(datos_iniciales['id_proveedor']) if datos_iniciales['id_proveedor'] is not None else ''
+        )
+        form = ProductoForm(data=datos_iniciales)
     else:
         form = ProductoForm()
 
-    # Semana 12: form.validate_on_submit() se sigue evaluando ANTES de
-    # tocar la base de datos; solo si los datos son válidos se ejecuta
-    # el INSERT o el UPDATE.
+    # Las choices del proveedor se llenan dinámicamente con lo que exista
+    # en la base de datos, ANTES de validar el formulario.
+    form.proveedor.choices = _obtener_choices_proveedores()
+
+    # form.validate_on_submit() se sigue evaluando ANTES de tocar la base
+    # de datos; solo si los datos son válidos se ejecuta el INSERT o el UPDATE.
     if form.validate_on_submit():
         nombre = form.nombre.data
         categoria = form.categoria.data
         precio = form.precio.data
         stock = form.stock.data  # None si el campo se dejó en blanco (servicio)
+        id_proveedor = int(form.proveedor.data) if form.proveedor.data else None
 
-        if producto_id is not None:
-            # UPDATE parametrizado (placeholders "?", nunca concatenación directa)
-            conn.execute(
-                'UPDATE productos SET nombre = ?, categoria = ?, precio = ?, stock = ? WHERE id = ?',
-                (nombre, categoria, precio, stock, producto_id)
-            )
-            flash('Producto actualizado correctamente.', 'success')
-        else:
-            # INSERT parametrizado
-            conn.execute(
-                'INSERT INTO productos (nombre, categoria, precio, stock) VALUES (?, ?, ?, ?)',
-                (nombre, categoria, precio, stock)
-            )
-            flash('Producto registrado correctamente.', 'success')
+        with conn.cursor() as cur:
+            if producto_id is not None:
+                # UPDATE parametrizado (placeholders "%s", nunca concatenación
+                # directa) con WHERE para modificar únicamente este producto.
+                cur.execute(
+                    '''UPDATE productos
+                       SET nombre = %s, categoria = %s, precio = %s, stock = %s, id_proveedor = %s
+                       WHERE id_producto = %s''',
+                    (nombre, categoria, precio, stock, id_proveedor, producto_id)
+                )
+                flash('Producto actualizado correctamente.', 'success')
+            else:
+                # INSERT parametrizado
+                cur.execute(
+                    '''INSERT INTO productos (nombre, categoria, precio, stock, id_proveedor)
+                       VALUES (%s, %s, %s, %s, %s)''',
+                    (nombre, categoria, precio, stock, id_proveedor)
+                )
+                flash('Producto registrado correctamente.', 'success')
 
         conn.commit()
         conn.close()
@@ -251,6 +307,29 @@ def formulario_producto(producto_id=None):
 
     conn.close()
     return render_template('formulario_producto.html', form=form, indice=producto_id)
+
+
+@app.route('/productos/eliminar/<int:producto_id>', methods=['POST'])
+def eliminar_producto(producto_id):
+    """Elimina un único producto de PostgreSQL.
+    Semana 13: DELETE parametrizado, siempre con WHERE por id_producto para
+    no afectar el resto de la tabla; se pide confirmación visual en
+    productos.html (modal de Bootstrap) antes de enviar este POST."""
+    conn = obtener_conexion()
+    with conn.cursor() as cur:
+        cur.execute('SELECT nombre FROM productos WHERE id_producto = %s', (producto_id,))
+        fila = cur.fetchone()
+        if fila is None:
+            conn.close()
+            flash('El producto solicitado no existe o ya fue eliminado.', 'danger')
+            return redirect(url_for('productos'))
+
+        cur.execute('DELETE FROM productos WHERE id_producto = %s', (producto_id,))
+    conn.commit()
+    conn.close()
+
+    flash(f'Producto "{fila["nombre"]}" eliminado correctamente.', 'success')
+    return redirect(url_for('productos'))
 
 
 @app.route('/clientes/nuevo', methods=['GET', 'POST'])
