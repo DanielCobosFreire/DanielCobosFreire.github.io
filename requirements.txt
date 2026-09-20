@@ -2,3 +2,6 @@ flask
 flask-wtf
 email_validator
 psycopg2-binary
+flask-login
+werkzeug
+python-dotenv

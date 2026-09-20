@@ -1,47 +1,46 @@
-# CSi - CoFre Sistemas Informáticos (Semana 13 - Base de datos relacional)
+# CSi - CoFre Sistemas Informáticos (Semana 14 - Login funcional)
 
 ## Novedades de esta semana
-La aplicación evoluciona de SQLite (Semana 12) a una **base de datos
-relacional real**: **PostgreSQL** (opción B de la consigna, usando
-`psycopg2-binary`). El módulo de **Productos** implementa el flujo
-completo pedido: **LISTAR (SELECT+JOIN) → AGREGAR (INSERT) → MODIFICAR
-(UPDATE) → ELIMINAR (DELETE)**, todo contra PostgreSQL.
+Se incorporó un **sistema de autenticación completo** con **Flask-Login**
+y **Werkzeug**, integrado con la base de datos PostgreSQL de la Semana 13.
 
-- **Conexión centralizada** en `conexion/conexion.py` (`obtener_conexion()`),
-  expuesta a través de `conexion/__init__.py`. Las credenciales se leen de
-  variables de entorno con valores por defecto para desarrollo local
-  (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
-- **Modelo relacional** con 4 tablas y una relación con `FOREIGN KEY`,
-  guardado en `sql/esquema.sql`:
-  - `proveedores(id_proveedor PK, nombre, telefono, correo)`
-  - `productos(id_producto PK, nombre, categoria, precio, stock, id_proveedor FK → proveedores)`
-  - `clientes(id_cliente PK, nombre, cedula, telefono, correo)` — tabla
-    preparada, el módulo sigue usando una lista en memoria esta semana.
-  - `facturas(id_factura PK, id_cliente FK → clientes, fecha, total)` —
-    tabla preparada, igual que clientes.
-- **`app.py`** ejecuta `sql/esquema.sql` al arrancar (`CREATE TABLE IF NOT
-  EXISTS`, idempotente) y siembra proveedores/productos de ejemplo solo si
-  las tablas están vacías.
-- **Productos** ahora tiene un campo **Proveedor** (`SelectField`), cuyas
-  opciones se cargan dinámicamente desde la tabla `proveedores` en cada
-  request, antes de validar el formulario.
-- **Listado con `JOIN`**: `productos.html` muestra el nombre real del
-  proveedor de cada producto (`LEFT JOIN proveedores ... ON
-  p.id_proveedor = pr.id_proveedor`), no solo su id.
-- **INSERT y UPDATE parametrizados** (`%s`, nunca concatenación) en
-  `formulario_producto`, con `WHERE id_producto = %s` en el UPDATE.
-- **Nueva funcionalidad: Eliminar** (`DELETE FROM productos WHERE
-  id_producto = %s`), con **confirmación visual** mediante un modal de
-  Bootstrap antes de enviar el POST.
-- **CSRF global**: se activó `CSRFProtect(app)` para que la nueva ruta de
-  eliminación (que no usa una clase `FlaskForm`) también quede protegida,
-  usando `{{ csrf_token() }}` directamente en la plantilla.
-- Se comprobó **directamente en PostgreSQL** (vía `psql`) que INSERT,
-  UPDATE y DELETE modifican realmente las filas, y que la restricción
-  `FOREIGN KEY` rechaza un `id_proveedor` inexistente.
-- Los módulos de **Clientes, Proveedores (catálogo propio) y Facturación**
-  no cambiaron: siguen con listas de Python en memoria, "preparados" para
-  su propia persistencia en un avance posterior.
+- **Tabla `usuarios`** agregada a `sql/esquema.sql` (`id`, `usuario`
+  UNIQUE, `password`). La contraseña **nunca** se guarda en texto plano:
+  siempre se transforma con `generate_password_hash()` antes del INSERT.
+- **`models.py`**: clase `Usuario(UserMixin)` — el modelo que Flask-Login
+  necesita, con `obtener_por_id()` (para `load_user`) y
+  `obtener_por_nombre_usuario()` (para el login).
+- **`forms/login_form.py`** y **`forms/usuario_form.py`** (Flask-WTF),
+  agregados al `forms/__init__.py` centralizado.
+- **`LoginManager`** configurado en `app.py`, con `login_view='login'`
+  (redirige automáticamente ahí a cualquiera que intente entrar a una
+  página protegida sin sesión) y `user_loader` (`load_user`).
+- **Rutas nuevas**:
+  - `/registro` (GET/POST): registra un usuario nuevo. Si el nombre ya
+    existe, la restricción `UNIQUE` de PostgreSQL lo rechaza y se muestra
+    un mensaje claro (sin romper con un error 500).
+  - `/login` (GET/POST): busca el usuario con `SELECT`, y compara la
+    contraseña con `check_password_hash()` — **nunca** comparando el
+    texto plano contra el hash directamente. Si es correcto, llama a
+    `login_user()`.
+  - `/logout`: llama a `logout_user()` y redirige al login.
+  - `/dashboard`: panel protegido, punto de entrada a los módulos.
+- **`@login_required`** en **todas** las rutas de administración:
+  `/productos`, `/productos/nuevo`, `/productos/editar/<id>`,
+  `/productos/eliminar/<id>`, y lo mismo para clientes, proveedores y
+  facturación. Escribir la URL directamente sin sesión redirige al login.
+- **`current_user`** se usa en el navbar (muestra el nombre del usuario
+  autenticado y el enlace "Cerrar sesión") y en `dashboard.html`
+  ("Bienvenido, `{{ current_user.usuario }}`").
+- **Buenas prácticas de configuración** (adoptadas también en el proyecto
+  de referencia de la compañera Marjorie Granda): `python-dotenv` +
+  `.env.example` + `.gitignore`, para que ni la `SECRET_KEY` ni las
+  credenciales de PostgreSQL queden hardcodeadas ni se suban al
+  repositorio. También se agregó `crear_base_datos_si_no_existe()` en
+  `conexion/conexion.py`, que crea la base de datos automáticamente si
+  todavía no existe (basta con tener PostgreSQL instalado).
+- `forms/__init__.py` ahora centraliza todos los imports de formularios
+  (`from forms import ProductoForm, ..., LoginForm, UsuarioForm`).
 
 ## Estructura
 ```
@@ -49,23 +48,31 @@ csi-flask/
 ├── index.html            <- ORIGINAL sin cambios, es el que usa GitHub Pages
 ├── script.js              <- ORIGINAL sin cambios
 ├── app.py
+├── models.py                <- NUEVO (Semana 14)
 ├── requirements.txt
-├── conexion/                <- NUEVO (Semana 13)
+├── .env.example              <- NUEVO (Semana 14)
+├── .gitignore                <- NUEVO (Semana 14)
+├── conexion/
 │   ├── __init__.py
-│   └── conexion.py
-├── sql/                     <- NUEVO (Semana 13)
-│   └── esquema.sql
+│   └── conexion.py             (+ python-dotenv, crear_base_datos_si_no_existe)
+├── sql/
+│   └── esquema.sql             (+ tabla usuarios)
 ├── forms/
-│   ├── __init__.py
-│   ├── producto_form.py       (+ campo "proveedor")
+│   ├── __init__.py              (centraliza todos los imports)
+│   ├── login_form.py           <- NUEVO
+│   ├── usuario_form.py         <- NUEVO
+│   ├── producto_form.py
 │   ├── cliente_form.py
 │   ├── proveedor_form.py
 │   └── facturacion_form.py
 ├── templates/
 │   ├── base.html
 │   ├── index.html
-│   ├── productos.html            (JOIN + columna Proveedor + modal Eliminar)
-│   ├── formulario_producto.html  (+ campo Proveedor)
+│   ├── login.html              <- NUEVO
+│   ├── registro.html           <- NUEVO
+│   ├── dashboard.html          <- NUEVO
+│   ├── productos.html
+│   ├── formulario_producto.html
 │   ├── clientes.html
 │   ├── formulario_cliente.html
 │   ├── proveedores.html
@@ -73,7 +80,7 @@ csi-flask/
 │   ├── facturacion.html
 │   ├── formulario_facturacion.html
 │   └── components/
-│       ├── navbar.html
+│       ├── navbar.html            (+ estado de sesión / Cerrar sesión)
 │       └── footer.html
 └── static/
     ├── css/style.css
@@ -81,87 +88,89 @@ csi-flask/
     └── img/
 ```
 
-**Nota:** la carpeta `data/` de la Semana 12 (SQLite) ya no se usa para
-Productos; puede eliminarse del repositorio o dejarse como referencia
-histórica, ya que esta semana la fuente real de datos es PostgreSQL.
+**Importante:** GitHub Pages solo sirve archivos estáticos. Todo el
+sistema de login (`models.py`, `LoginManager`, las rutas nuevas) solo se
+ejecuta localmente con `python app.py`.
 
-**Importante:** GitHub Pages solo sirve archivos estáticos. Todo lo de
-PostgreSQL (`conexion/`, `sql/`, la conexión en `app.py`) solo se ejecuta
-localmente con `python app.py`.
+## Configurar el entorno local
+1. Copia `.env.example` como `.env` y ajusta los valores si tu instalación
+   de PostgreSQL usa otro usuario/clave/nombre de base de datos:
+   ```
+   cp .env.example .env
+   ```
+   `.env` **no se sube** al repositorio (está en `.gitignore`) — ahí es
+   donde irían credenciales reales en un entorno de verdad.
+2. Instala las dependencias:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Ejecuta la aplicación. Si la base de datos indicada en `.env` todavía
+   no existe, `app.py` la crea sola (además de las tablas):
+   ```
+   python app.py
+   ```
 
-## Configurar PostgreSQL localmente
-1. Instala PostgreSQL (por ejemplo, con el instalador oficial en Windows,
-   o `sudo apt install postgresql` en Linux).
-2. Crea el usuario y la base de datos del proyecto (puedes ajustar el
-   nombre/clave, pero entonces también ajusta las variables de entorno o
-   los valores por defecto en `conexion/conexion.py`):
-   ```sql
-   CREATE USER csi_user WITH PASSWORD 'csi_password';
-   CREATE DATABASE csi_ferreteria OWNER csi_user;
-   GRANT ALL PRIVILEGES ON DATABASE csi_ferreteria TO csi_user;
+## Probar localmente el flujo completo de login
+1. Abre http://127.0.0.1:5000/productos **sin haber iniciado sesión** →
+   debes ser redirigido automáticamente a `/login` con un mensaje
+   ("Por favor inicia sesión para acceder a esta página").
+2. Ve a **"Regístrate aquí"**, crea un usuario (ej. `admin` / `Admin123`).
+3. Verifica en PostgreSQL que el usuario quedó guardado y que la
+   contraseña **no** es texto plano:
    ```
-3. (Opcional) Si prefieres crear el esquema tú mismo antes de correr Flask:
+   psql -U csi_user -d csi_ferreteria -h localhost -c "SELECT * FROM usuarios;"
    ```
-   psql -U csi_user -d csi_ferreteria -h localhost -f sql/esquema.sql
-   ```
-   No es obligatorio: `app.py` lo ejecuta automáticamente al arrancar.
-
-## Probar localmente (requiere Python + PostgreSQL corriendo)
-```
-pip install -r requirements.txt
-python app.py
-```
-Luego abre http://127.0.0.1:5000/productos y prueba el flujo completo:
-1. **Listar**: deben aparecer los 5 productos de ejemplo, cada uno con su
-   proveedor (o "Sin proveedor" para el servicio de mantenimiento).
-2. **Agregar**: clic en "+ Nuevo Producto", completa el formulario
-   (elige un proveedor o deja "Sin proveedor asignado") y guarda →
-   aparece de inmediato en la tabla.
-3. **Modificar**: clic en "Editar" sobre cualquier fila, cambia algún dato
-   (incluido el proveedor) y guarda → se actualiza ese mismo registro.
-4. **Eliminar**: clic en "Eliminar" → aparece un modal de confirmación;
-   al aceptar, el producto desaparece de la tabla.
-5. **Verificar en PostgreSQL directamente**, por ejemplo:
-   ```
-   psql -U csi_user -d csi_ferreteria -h localhost -c "SELECT * FROM productos;"
-   ```
-6. **Detén la aplicación (Ctrl+C) y vuelve a ejecutar `python app.py`.**
-   Todos los cambios (altas, ediciones, bajas) deben seguir ahí — ya no
-   se pierden al reiniciar, porque viven en PostgreSQL.
+4. Intenta iniciar sesión con una contraseña **incorrecta** → debe
+   rechazarse con "Usuario o contraseña incorrectos.".
+5. Inicia sesión con la contraseña correcta → deberías llegar al
+   **Dashboard**, con tu nombre de usuario visible en el navbar.
+6. Entra a Productos, Clientes, Proveedores y Facturación — deben seguir
+   funcionando exactamente igual que en la Semana 13 (CRUD completo en
+   Productos contra PostgreSQL).
+7. Clic en **"Cerrar sesión"**.
+8. Intenta volver a escribir directamente `http://127.0.0.1:5000/productos`
+   en la barra de direcciones → debe redirigirte de nuevo al login.
+9. (Opcional) Reinicia Flask (Ctrl+C y `python app.py` de nuevo) y repite
+   el login con el mismo usuario: debe seguir funcionando, porque el
+   usuario vive en PostgreSQL, no en memoria.
 
 ## Subir a GitHub (flujo GUI, sin terminal)
 1. No toques el `index.html` ni el `script.js` de la raíz (los usa GitHub
    Pages) — déjalos tal cual.
-2. Reemplaza `app.py` y `requirements.txt` en la raíz del repositorio.
-3. Crea la carpeta `conexion` y sube ahí `__init__.py` y `conexion.py`.
-4. Crea la carpeta `sql` y sube ahí `esquema.sql`.
-5. Reemplaza `forms/producto_form.py` (ahora incluye el campo proveedor).
-6. Dentro de `templates`, reemplaza `productos.html` y
-   `formulario_producto.html`.
-7. El resto (`base.html`, `components/`, `clientes.html`,
-   `proveedores.html`, `facturacion.html` y sus formularios, `static/`)
-   **no cambió** esta semana.
-8. **No subas contraseñas reales** de PostgreSQL: `conexion/conexion.py`
-   solo tiene valores de ejemplo para desarrollo local, pensados para
-   sobreescribirse con variables de entorno.
-9. Verifica que GitHub Pages siga mostrando la web con normalidad.
-10. Ejecuta `python app.py` localmente con PostgreSQL corriendo, prueba
-    el flujo completo (agregar, modificar, eliminar, reiniciar) y
-    confirma los cambios directamente en la base de datos antes de dar
-    por terminado el avance.
+2. Reemplaza `app.py` y `requirements.txt`. Sube `models.py`,
+   `.env.example` y `.gitignore` a la raíz del repositorio.
+3. Reemplaza `conexion/conexion.py` y `forms/__init__.py`. Sube
+   `forms/login_form.py` y `forms/usuario_form.py`.
+4. Reemplaza `sql/esquema.sql` (ahora incluye la tabla `usuarios`).
+5. Dentro de `templates`, sube `login.html`, `registro.html` y
+   `dashboard.html`, y reemplaza `components/navbar.html`.
+6. El resto de plantillas, formularios y estáticos **no cambiaron** esta
+   semana.
+7. **Nunca subas un archivo `.env` real** con contraseñas — solo
+   `.env.example` (sin valores sensibles) va al repositorio.
+8. Ejecuta `python app.py` localmente y repite la prueba obligatoria
+   completa (registrar → verificar hash en la BD → login incorrecto
+   rechazado → login correcto → acceder a ruta protegida → logout →
+   intentar volver a acceder) antes de dar por terminado el avance.
 
 ## Nota sobre cuántos archivos subir
 Si tu plataforma limita la cantidad de archivos por entrega, para esta
 semana **basta con subir los que realmente cambiaron o son nuevos**:
 - `app.py`
-- `conexion/__init__.py`
+- `models.py`
+- `requirements.txt`
+- `.env.example`
+- `.gitignore`
 - `conexion/conexion.py`
 - `sql/esquema.sql`
-- `forms/producto_form.py`
-- `templates/productos.html`
-- `templates/formulario_producto.html`
-- `requirements.txt`
+- `forms/__init__.py`
+- `forms/login_form.py`
+- `forms/usuario_form.py`
+- `templates/login.html`
+- `templates/registro.html`
+- `templates/dashboard.html`
+- `templates/components/navbar.html`
 
-Todo lo demás (el resto de formularios, plantillas, componentes y
-estáticos) es idéntico a lo entregado en la Semana 12 y no necesita
-volver a subirse.
+Todo lo demás (el resto de formularios, plantillas de productos/clientes/
+proveedores/facturación y estáticos) es idéntico a lo entregado en la
+Semana 13 y no necesita volver a subirse.

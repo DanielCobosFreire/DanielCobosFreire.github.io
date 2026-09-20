@@ -14,32 +14,67 @@
 # PostgreSQL. Clientes, proveedores (como catálogo propio) y facturación
 # se mantienen con listas de Python en memoria, "preparados" para
 # incorporar su propia persistencia en un avance posterior.
+# Semana 14: sistema de autenticación con Flask-Login + Werkzeug. Se
+# agrega una tabla "usuarios" (contraseñas protegidas con
+# generate_password_hash/check_password_hash), rutas /registro, /login,
+# /logout y /dashboard, y se protegen con @login_required todas las
+# rutas de administración (productos, clientes, proveedores, facturación).
 
 import os
 from datetime import datetime
+
 from flask import Flask, render_template, redirect, url_for, flash
 from flask_wtf.csrf import CSRFProtect
+from flask_login import (
+    LoginManager, login_user, logout_user,
+    login_required, current_user
+)
+from werkzeug.security import generate_password_hash, check_password_hash
+import psycopg2
 
-from conexion import obtener_conexion
-from forms.producto_form import ProductoForm
-from forms.cliente_form import ClienteForm
-from forms.proveedor_form import ProveedorForm
-from forms.facturacion_form import FacturacionForm
+from conexion import obtener_conexion, crear_base_datos_si_no_existe
+from models import Usuario
+from forms import (
+    ProductoForm, ClienteForm, ProveedorForm, FacturacionForm,
+    LoginForm, UsuarioForm,
+)
 
 app = Flask(__name__)
 
-# Semana 11: SECRET_KEY necesaria para que Flask-WTF pueda generar y
-# validar el token CSRF de cada formulario. En un entorno real se leería
-# desde una variable de entorno; aquí se deja un valor fijo para que el
-# proyecto funcione de inmediato al ejecutarlo localmente.
-app.config['SECRET_KEY'] = 'csi-clave-secreta-semana11-cambiar-en-produccion'
+# Semana 11/14: SECRET_KEY necesaria para que Flask-WTF pueda generar y
+# validar el token CSRF de cada formulario, y para que Flask-Login pueda
+# firmar de forma segura la cookie de sesión. Se lee de la variable de
+# entorno SECRET_KEY (definida en .env, ver .env.example); si no existe,
+# se usa un valor por defecto solo para que el proyecto funcione de
+# inmediato en desarrollo local.
+app.config['SECRET_KEY'] = os.environ.get(
+    'SECRET_KEY', 'csi-clave-secreta-semana11-cambiar-en-produccion'
+)
 
 # Semana 13: se activa CSRFProtect de forma global. Los formularios basados
-# en FlaskForm (productos, clientes, proveedores, facturación) ya incluían
-# su propio token vía form.hidden_tag(); esto además protege la nueva
-# ruta de eliminación de productos, que envía un POST simple (sin una
-# clase FlaskForm detrás) y usa {{ csrf_token() }} directamente en la plantilla.
+# en FlaskForm (productos, clientes, proveedores, facturación, login,
+# registro) ya incluían su propio token vía form.hidden_tag(); esto además
+# protege la ruta de eliminación de productos y la de logout, que envían
+# un POST simple (sin una clase FlaskForm detrás) y usan
+# {{ csrf_token() }} directamente en la plantilla.
 csrf = CSRFProtect(app)
+
+# =============================================================================
+# Semana 14: configuración de Flask-Login.
+# =============================================================================
+login_manager = LoginManager(app)
+# Si un usuario no autenticado intenta acceder a una ruta con
+# @login_required, Flask-Login lo redirige automáticamente a esta vista.
+login_manager.login_view = 'login'
+login_manager.login_message = 'Por favor inicia sesión para acceder a esta página.'
+login_manager.login_message_category = 'warning'
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Flask-Login llama a esta función en cada request para reconstruir
+    el usuario autenticado a partir del id guardado en la cookie de sesión."""
+    return Usuario.obtener_por_id(user_id)
 
 
 # =============================================================================
@@ -53,8 +88,11 @@ RUTA_ESQUEMA_SQL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sql
 
 
 def inicializar_base_datos():
-    """Crea las tablas del modelo relacional (si no existen) ejecutando
-    sql/esquema.sql, y siembra datos de ejemplo solo la primera vez."""
+    """Crea la base de datos (si no existe) y las tablas del modelo
+    relacional ejecutando sql/esquema.sql, y siembra datos de ejemplo
+    solo la primera vez."""
+    crear_base_datos_si_no_existe()
+
     conn = obtener_conexion()
     with conn:
         with conn.cursor() as cur:
@@ -172,6 +210,7 @@ def index():
 
 
 @app.route('/productos')
+@login_required
 def productos():
     """Módulo de Productos: listado.
     Semana 13: SELECT con JOIN hacia proveedores (clave foránea
@@ -197,18 +236,21 @@ def productos():
 
 
 @app.route('/clientes')
+@login_required
 def clientes():
     """Módulo de Clientes: listado."""
     return render_template('clientes.html', clientes=clientes_data)
 
 
 @app.route('/proveedores')
+@login_required
 def proveedores():
     """Módulo de Proveedores: listado."""
     return render_template('proveedores.html', proveedores=proveedores_data)
 
 
 @app.route('/facturacion')
+@login_required
 def facturacion():
     """Módulo de Facturación: listado."""
     return render_template('facturacion.html', facturas=facturas_data)
@@ -241,6 +283,7 @@ def _obtener_choices_proveedores():
 
 @app.route('/productos/nuevo', methods=['GET', 'POST'])
 @app.route('/productos/editar/<int:producto_id>', methods=['GET', 'POST'])
+@login_required
 def formulario_producto(producto_id=None):
     """Registro/edición de un producto. Reutiliza ProductoForm para ambos casos.
 
@@ -310,6 +353,7 @@ def formulario_producto(producto_id=None):
 
 
 @app.route('/productos/eliminar/<int:producto_id>', methods=['POST'])
+@login_required
 def eliminar_producto(producto_id):
     """Elimina un único producto de PostgreSQL.
     Semana 13: DELETE parametrizado, siempre con WHERE por id_producto para
@@ -334,6 +378,7 @@ def eliminar_producto(producto_id):
 
 @app.route('/clientes/nuevo', methods=['GET', 'POST'])
 @app.route('/clientes/editar/<int:indice>', methods=['GET', 'POST'])
+@login_required
 def formulario_cliente(indice=None):
     """Registro/edición de un cliente. Reutiliza ClienteForm para ambos casos."""
     if indice is not None:
@@ -365,6 +410,7 @@ def formulario_cliente(indice=None):
 
 @app.route('/proveedores/nuevo', methods=['GET', 'POST'])
 @app.route('/proveedores/editar/<int:indice>', methods=['GET', 'POST'])
+@login_required
 def formulario_proveedor(indice=None):
     """Registro/edición de un proveedor. Reutiliza ProveedorForm para ambos casos."""
     if indice is not None:
@@ -394,6 +440,7 @@ def formulario_proveedor(indice=None):
 
 @app.route('/facturacion/nueva', methods=['GET', 'POST'])
 @app.route('/facturacion/editar/<int:indice>', methods=['GET', 'POST'])
+@login_required
 def formulario_facturacion(indice=None):
     """Registro/edición de una factura. Reutiliza FacturacionForm para ambos casos."""
     if indice is not None:
@@ -421,6 +468,91 @@ def formulario_facturacion(indice=None):
         return redirect(url_for('facturacion'))
 
     return render_template('formulario_facturacion.html', form=form, indice=indice)
+
+
+# =============================================================================
+# Semana 14: sistema de autenticación (registro, login, dashboard, logout).
+# =============================================================================
+
+@app.route('/registro', methods=['GET', 'POST'])
+def registro():
+    """Registra un nuevo usuario en la tabla 'usuarios'.
+    La contraseña NUNCA se guarda en texto plano: se transforma con
+    generate_password_hash() antes del INSERT. Si el nombre de usuario
+    ya existe, la restricción UNIQUE de la base de datos lo rechaza y se
+    muestra un mensaje claro en vez de un error de servidor."""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    form = UsuarioForm()
+
+    if form.validate_on_submit():
+        password_hash = generate_password_hash(form.password.data)
+
+        conn = obtener_conexion()
+        try:
+            with conn.cursor() as cur:
+                # INSERT parametrizado; el hash (nunca la contraseña en
+                # texto plano) es lo único que se guarda en la BD.
+                cur.execute(
+                    'INSERT INTO usuarios (usuario, password) VALUES (%s, %s)',
+                    (form.usuario.data, password_hash)
+                )
+            conn.commit()
+            flash('Usuario registrado correctamente. Ya puedes iniciar sesión.', 'success')
+            return redirect(url_for('login'))
+        except psycopg2.errors.UniqueViolation:
+            conn.rollback()
+            flash('Ese nombre de usuario ya está en uso. Elige otro.', 'danger')
+        finally:
+            conn.close()
+
+    return render_template('registro.html', form=form)
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Valida las credenciales ingresadas y, si son correctas, crea la
+    sesión del usuario con login_user(). Nunca compara la contraseña
+    escrita directamente contra la almacenada: siempre pasa por
+    check_password_hash()."""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    form = LoginForm()
+
+    if form.validate_on_submit():
+        usuario_encontrado = Usuario.obtener_por_nombre_usuario(form.usuario.data)
+
+        if usuario_encontrado is not None and check_password_hash(
+            usuario_encontrado.password_hash, form.password.data
+        ):
+            login_user(usuario_encontrado)
+            flash(f'Bienvenido, {usuario_encontrado.usuario}.', 'success')
+            return redirect(url_for('dashboard'))
+
+        # Credenciales incorrectas: no se revela si falló el usuario o la
+        # contraseña, para no dar pistas a quien intente adivinar.
+        flash('Usuario o contraseña incorrectos.', 'danger')
+
+    return render_template('login.html', form=form)
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Cierra la sesión del usuario autenticado y lo redirige al login."""
+    logout_user()
+    flash('Sesión cerrada correctamente.', 'success')
+    return redirect(url_for('login'))
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    """Panel de administración: punto de entrada a los módulos protegidos,
+    solo visible para usuarios que hayan iniciado sesión."""
+    return render_template('dashboard.html')
 
 
 if __name__ == '__main__':
